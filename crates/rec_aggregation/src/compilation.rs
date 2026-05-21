@@ -274,6 +274,7 @@ fn build_replacements(log_inner_bytecode: usize, bytecode_zero_eval: F) -> BTree
     let mut air_degrees = vec![];
     let mut n_air_columns = vec![];
     let mut n_air_shift_columns = vec![];
+    let mut n_air_constraints = vec![];
     for table in ALL_TABLES {
         let mut table_domseps = vec![];
         let mut table_data_cols = vec![];
@@ -325,6 +326,7 @@ fn build_replacements(log_inner_bytecode: usize, bytecode_zero_eval: F) -> BTree
         air_degrees.push(table.degree_air().to_string());
         n_air_columns.push(table.n_columns().to_string());
         n_air_shift_columns.push(table.n_shift_columns().to_string());
+        n_air_constraints.push(table.n_constraints().to_string());
     }
     replacements.insert(
         "ONE_BUSES_DOMSEPS_PLACEHOLDER".to_string(),
@@ -351,8 +353,12 @@ fn build_replacements(log_inner_bytecode: usize, bytecode_zero_eval: F) -> BTree
         Table::execution().index().to_string(),
     );
     replacements.insert(
-        "MAX_NUM_AIR_CONSTRAINTS_PLACEHOLDER".to_string(),
-        max_air_constraints().to_string(),
+        "TOTAL_NUM_AIR_CONSTRAINTS_PLACEHOLDER".to_string(),
+        total_air_constraints().to_string(),
+    );
+    replacements.insert(
+        "N_AIR_CONSTRAINTS_PLACEHOLDER".to_string(),
+        format!("[{}]", n_air_constraints.join(", ")),
     );
     replacements.insert(
         "AIR_DEGREES_PLACEHOLDER".to_string(),
@@ -524,11 +530,15 @@ where
         domainsep_str,
         (1 << LOG_MAX_BUS_WIDTH) - 1
     );
+    // `air_alpha_powers` is the slice [alpha^offset, alpha^{offset+1}, …] for this table.
+    // Multiplicity → slot 0, bus fingerprint → slot 1, remaining AIR constraints → slot 2+.
     res += "\n    bus_res = mul_extension_ret(bus_res, air_alpha_powers + DIM)";
-    res += &format!("\n    sum: Mut = add_extension_ret(bus_res, {})", multiplicity);
+    res += &format!(
+        "\n    weighted_multiplicity = mul_extension_ret(air_alpha_powers, {})",
+        multiplicity
+    );
+    res += "\n    sum: Mut = add_extension_ret(bus_res, weighted_multiplicity)";
 
-    // Remaining AIR constraints start at air_alpha_powers[2] (alpha^0 is the multiplicity,
-    // alpha^1 is the bus fingerprint).
     res += "\n    weighted_constraints = Array(DIM)";
     res += &format!(
         "\n    dot_product_ee(air_alpha_powers + 2 * DIM, constraints_buf, weighted_constraints, {})",

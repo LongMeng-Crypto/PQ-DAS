@@ -48,7 +48,7 @@ impl<const BUS: bool> Air for ExtensionOpPrecompile<BUS> {
         6
     }
     fn n_constraints(&self) -> usize {
-        34
+        35
     }
     fn n_shift_columns(&self) -> usize {
         COL_COMP + 5

@@ -12,7 +12,8 @@ MAX_LOG_N_ROWS_PER_TABLE = MAX_LOG_N_ROWS_PER_TABLE_PLACEHOLDER
 MIN_LOG_MEMORY_SIZE = MIN_LOG_MEMORY_SIZE_PLACEHOLDER
 MAX_LOG_MEMORY_SIZE = MAX_LOG_MEMORY_SIZE_PLACEHOLDER
 MAX_BUS_WIDTH = MAX_BUS_WIDTH_PLACEHOLDER
-MAX_NUM_AIR_CONSTRAINTS = MAX_NUM_AIR_CONSTRAINTS_PLACEHOLDER
+TOTAL_NUM_AIR_CONSTRAINTS = TOTAL_NUM_AIR_CONSTRAINTS_PLACEHOLDER
+N_AIR_CONSTRAINTS = N_AIR_CONSTRAINTS_PLACEHOLDER  # n_constraints per table_index
 
 LOGUP_MEMORY_DOMAINSEP = LOGUP_MEMORY_DOMAINSEP_PLACEHOLDER
 LOGUP_BYTECODE_DOMAINSEP = LOGUP_BYTECODE_DOMAINSEP_PLACEHOLDER
@@ -362,25 +363,31 @@ def continue_recursion_ordered(
     # VERIFY BUS AND AIR — back-loaded batched sumcheck (see https://hackmd.io/s/HyxaupAAA)
 
     fs, air_alpha = fs_sample_ef(fs)
-    air_alpha_powers = powers_const(air_alpha, MAX_NUM_AIR_CONSTRAINTS + 1)
-    fs = fs_duplex(fs)
-    fs, eta = fs_sample_ef(fs)
-    eta_powers = powers_const(eta, N_TABLES)
+    air_alpha_powers = powers_const(air_alpha, TOTAL_NUM_AIR_CONSTRAINTS)
+
+    alpha_offsets = Array(N_TABLES)
+    cumulative: Mut = 0
+    for sorted_pos in unroll(0, N_TABLES):
+        alpha_offsets[sorted_pos] = cumulative
+        table_index = sorted_table_index(sorted_pos, second_table, third_table)
+        cumulative += N_AIR_CONSTRAINTS[table_index]
 
     initial_sum: Mut = ZERO_VEC_PTR
     for sorted_pos in unroll(0, N_TABLES):
         table_index = sorted_table_index(sorted_pos, second_table, third_table)
         bus_numerator_value = bus_numerators_values[sorted_pos]
         bus_denominator_value = bus_denominators_values[sorted_pos]
+        offset = alpha_offsets[sorted_pos]
 
-        bus_final_value: Mut = bus_numerator_value
+        signed_numerator: Mut = bus_numerator_value
         if table_index != EXECUTION_TABLE_INDEX:
-            bus_final_value = opposite_extension_ret(bus_final_value)
+            signed_numerator = opposite_extension_ret(signed_numerator)
+        bus_final_value: Mut = mul_extension_ret(air_alpha_powers + offset * DIM, signed_numerator)
         bus_final_value = add_extension_ret(
             bus_final_value,
-            mul_extension_ret(air_alpha_powers + DIM, sub_extension_ret(logup_c, bus_denominator_value)),
+            mul_extension_ret(air_alpha_powers + (offset + 1) * DIM, sub_extension_ret(logup_c, bus_denominator_value)),
         )
-        initial_sum = add_extension_ret(initial_sum, mul_extension_ret(eta_powers + sorted_pos * DIM, bus_final_value))
+        initial_sum = add_extension_ret(initial_sum, bus_final_value)
 
     n_max = log_n_cycles # extension table is always the biggest
     # Batched AIR sumcheck:
@@ -393,20 +400,20 @@ def continue_recursion_ordered(
         total_num_cols = NUM_COLS_AIR[table_index]
         n_flat_columns = N_AIR_COLUMNS[table_index]
         n_shift_columns = N_AIR_SHIFT_COLUMNS[table_index]
+        offset = alpha_offsets[sorted_pos]
 
         fs, inner_evals = fs_receive_ef_inlined(fs, n_flat_columns + n_shift_columns)
 
-        air_constraints_eval = evaluate_air_constraints(table_index, inner_evals, air_alpha_powers, logup_alphas_eq_poly)
+        air_constraints_eval = evaluate_air_constraints(
+            table_index, inner_evals, air_alpha_powers + offset * DIM, logup_alphas_eq_poly
+        )
 
         bus_point = pcs_points[table_index][0]
         eq_val = poly_eq_extension_dynamic_ret(bus_point, all_challenges, log_n_rows)
 
         k_t = product_first_n(all_challenges + log_n_rows * DIM, n_max - log_n_rows)
 
-        contribution = mul_extension_ret(
-            mul_extension_ret(eta_powers + sorted_pos * DIM, k_t),
-            mul_extension_ret(eq_val, air_constraints_eval),
-        )
+        contribution = mul_extension_ret(k_t, mul_extension_ret(eq_val, air_constraints_eval))
         check_sum = add_extension_ret(check_sum, contribution)
 
         pcs_points[table_index].push(all_challenges)
