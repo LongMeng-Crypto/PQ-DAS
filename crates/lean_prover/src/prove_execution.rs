@@ -153,8 +153,6 @@ pub fn prove_execution(
         );
     }
 
-    let bus_beta = prover_state.sample();
-    prover_state.duplex();
     let air_alpha = prover_state.sample();
     let air_alpha_powers: Vec<EF> = air_alpha.powers().collect_n(max_air_constraints() + 1);
     prover_state.duplex();
@@ -189,11 +187,11 @@ pub fn prove_execution(
                 BusDirection::Pull => EF::NEG_ONE,
                 BusDirection::Push => EF::ONE,
             }
-            + bus_beta * (logup_c - bus_denominator_value);
+            + air_alpha_powers[1] * (logup_c - bus_denominator_value);
 
         let eq_suffix = from_end(gkr_point, *log_n_rows).to_vec();
 
-        let extra_data = ExtraDataForBuses::new(logup_alphas_eq_poly.clone(), bus_beta, air_alpha_powers.clone());
+        let extra_data = ExtraDataForBuses::new(logup_alphas_eq_poly.clone(), air_alpha_powers.clone());
 
         let mut flat_and_shift: Vec<&[PF<EF>]> = column_refs[idx].to_vec();
         flat_and_shift.extend(shifted_rows[idx].iter().map(Vec::as_slice));

@@ -361,8 +361,6 @@ def continue_recursion_ordered(
 
     # VERIFY BUS AND AIR — back-loaded batched sumcheck (see https://hackmd.io/s/HyxaupAAA)
 
-    fs, bus_beta = fs_sample_ef(fs)
-    fs = fs_duplex(fs)
     fs, air_alpha = fs_sample_ef(fs)
     air_alpha_powers = powers_const(air_alpha, MAX_NUM_AIR_CONSTRAINTS + 1)
     fs = fs_duplex(fs)
@@ -380,7 +378,7 @@ def continue_recursion_ordered(
             bus_final_value = opposite_extension_ret(bus_final_value)
         bus_final_value = add_extension_ret(
             bus_final_value,
-            mul_extension_ret(bus_beta, sub_extension_ret(logup_c, bus_denominator_value)),
+            mul_extension_ret(air_alpha_powers + DIM, sub_extension_ret(logup_c, bus_denominator_value)),
         )
         initial_sum = add_extension_ret(initial_sum, mul_extension_ret(eta_powers + sorted_pos * DIM, bus_final_value))
 
@@ -398,7 +396,7 @@ def continue_recursion_ordered(
 
         fs, inner_evals = fs_receive_ef_inlined(fs, n_flat_columns + n_shift_columns)
 
-        air_constraints_eval = evaluate_air_constraints(table_index, inner_evals, air_alpha_powers, bus_beta, logup_alphas_eq_poly)
+        air_constraints_eval = evaluate_air_constraints(table_index, inner_evals, air_alpha_powers, logup_alphas_eq_poly)
 
         bus_point = pcs_points[table_index][0]
         eq_val = poly_eq_extension_dynamic_ret(bus_point, all_challenges, log_n_rows)
@@ -766,16 +764,16 @@ def compute_total_gkr_n_vars(log_memory, log_bytecode_padded, tables_heights):
     return log2_ceil_runtime(total)
 
 
-def evaluate_air_constraints(table_index, inner_evals, air_alpha_powers, bus_beta, logup_alphas_eq_poly):
+def evaluate_air_constraints(table_index, inner_evals, air_alpha_powers, logup_alphas_eq_poly):
     res: Imu
     debug_assert(table_index < N_TABLES)
     match table_index:
         case 0:
-            res = evaluate_air_constraints_table_0(inner_evals, air_alpha_powers, bus_beta, logup_alphas_eq_poly)
+            res = evaluate_air_constraints_table_0(inner_evals, air_alpha_powers, logup_alphas_eq_poly)
         case 1:
-            res = evaluate_air_constraints_table_1(inner_evals, air_alpha_powers, bus_beta, logup_alphas_eq_poly)
+            res = evaluate_air_constraints_table_1(inner_evals, air_alpha_powers, logup_alphas_eq_poly)
         case 2:
-            res = evaluate_air_constraints_table_2(inner_evals, air_alpha_powers, bus_beta, logup_alphas_eq_poly)
+            res = evaluate_air_constraints_table_2(inner_evals, air_alpha_powers, logup_alphas_eq_poly)
     return res
 
 

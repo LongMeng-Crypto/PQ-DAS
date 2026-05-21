@@ -493,7 +493,7 @@ where
     let mut ctx = AirCodegenCtx::new();
 
     let mut res = format!(
-        "def evaluate_air_constraints_table_{}({}, air_alpha_powers, bus_beta, logup_alphas_eq_poly):\n",
+        "def evaluate_air_constraints_table_{}({}, air_alpha_powers, logup_alphas_eq_poly):\n",
         table.table().index(),
         AIR_INNER_VALUES_VAR
     );
@@ -524,13 +524,14 @@ where
         domainsep_str,
         (1 << LOG_MAX_BUS_WIDTH) - 1
     );
-    res += "\n    bus_res = mul_extension_ret(bus_res, bus_beta)";
+    res += "\n    bus_res = mul_extension_ret(bus_res, air_alpha_powers + DIM)";
     res += &format!("\n    sum: Mut = add_extension_ret(bus_res, {})", multiplicity);
 
-    // Batch constraint weighting: single dot_product_ee(alpha_powers, constraints_buf, result, n_constraints)
+    // Remaining AIR constraints start at air_alpha_powers[2] (alpha^0 is the multiplicity,
+    // alpha^1 is the bus fingerprint).
     res += "\n    weighted_constraints = Array(DIM)";
     res += &format!(
-        "\n    dot_product_ee(air_alpha_powers + DIM, constraints_buf, weighted_constraints, {})",
+        "\n    dot_product_ee(air_alpha_powers + 2 * DIM, constraints_buf, weighted_constraints, {})",
         n_constraints
     );
     res += "\n    sum = add_extension_ret(sum, weighted_constraints)";
