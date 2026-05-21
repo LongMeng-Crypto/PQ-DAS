@@ -186,7 +186,7 @@ unsafe impl GlobalAlloc for ZkAllocator {
         let new_layout = unsafe { Layout::from_size_align_unchecked(new_size, layout.align()) };
         let new_ptr = unsafe { self.alloc(new_layout) };
         if !new_ptr.is_null() {
-            unsafe { std::ptr::copy_nonoverlapping(ptr, new_ptr, layout.size()) };
+            unsafe { std::ptr::copy(ptr, new_ptr, layout.size()) };
             unsafe { self.dealloc(ptr, layout) };
         }
         new_ptr
