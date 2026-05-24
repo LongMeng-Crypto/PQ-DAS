@@ -187,16 +187,8 @@ def main():
         sub_indices_arr = Array(n_sub)
         hint_witness("sub_indices", sub_indices_arr)
 
-        idx0 = sub_indices_arr[0]
-        assert idx0 < n_total
-        buffer[idx0] = counter
-        counter += 1
-        pk0 = all_pubkeys + idx0 * PUB_KEY_SIZE
-        running_hash: Mut = Array(DIGEST_LEN)
-        iv = build_iv(n_sub * PUB_KEY_SIZE)
-        poseidon16_compress(iv, pk0, running_hash)
-
-        for j in dynamic_unroll(1, n_sub, log2_ceil(MAX_N_SIGS)):
+        running_hash: Mut = build_iv(n_sub * PUB_KEY_SIZE)
+        for j in dynamic_unroll(0, n_sub, log2_ceil(MAX_N_SIGS)):
             idx = sub_indices_arr[j]
             assert idx < n_total
             buffer[idx] = counter
@@ -240,7 +232,7 @@ def main():
 
 
 def reduce_bytecode_claims(bytecode_claims, n_bytecode_claims, bytecode_claim_output):
-    bytecode_claims_hash: Mut = ZERO_VEC_PTR
+    bytecode_claims_hash: Mut = build_iv(n_bytecode_claims * DIGEST_LEN)
     for i in range(0, n_bytecode_claims):
         claim_ptr = bytecode_claims[i]
         for k in unroll(BYTECODE_CLAIM_SIZE, BYTECODE_CLAIM_SIZE_PADDED):
