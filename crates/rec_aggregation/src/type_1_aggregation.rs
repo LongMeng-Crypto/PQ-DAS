@@ -219,7 +219,13 @@ pub(crate) fn aggregate_type_1_with_min_padding(
     log_inv_rate: usize,
     min_table_log_n_rows: BTreeMap<Table, usize>,
 ) -> Result<TypeOneMultiSignature, ProverError> {
-    assert!(children.len() <= MAX_RECURSIONS);
+    if children.len() > MAX_RECURSIONS {
+        return Err(ProverError::LimitExceeded {
+            what: "aggregation children",
+            actual: children.len(),
+            max: MAX_RECURSIONS,
+        });
+    }
     for child in children {
         assert_eq!(
             child.info.message, message,
@@ -254,7 +260,13 @@ pub(crate) fn aggregate_type_1_with_min_padding(
     global_pub_keys.sort();
     global_pub_keys.dedup();
     let n_sigs = global_pub_keys.len();
-    assert!(n_sigs <= MAX_XMSS_AGGREGATED);
+    if n_sigs > MAX_XMSS_AGGREGATED {
+        return Err(ProverError::LimitExceeded {
+            what: "aggregated public keys",
+            actual: n_sigs,
+            max: MAX_XMSS_AGGREGATED,
+        });
+    }
 
     let tweak_table = compute_tweak_table(slot);
     let tweaks_hash = poseidon_compress_slice(&tweak_table);
@@ -321,7 +333,13 @@ pub(crate) fn aggregate_type_1_with_min_padding(
     }
 
     let n_dup = dup_pub_keys.len();
-    assert!(n_dup <= MAX_XMSS_DUPLICATES);
+    if n_dup > MAX_XMSS_DUPLICATES {
+        return Err(ProverError::LimitExceeded {
+            what: "duplicate public keys",
+            actual: n_dup,
+            max: MAX_XMSS_DUPLICATES,
+        });
+    }
 
     let mut pubkeys_blob: Vec<F> = Vec::with_capacity((n_sigs + n_dup) * PUB_KEY_FLAT_SIZE);
     for pk in &global_pub_keys {

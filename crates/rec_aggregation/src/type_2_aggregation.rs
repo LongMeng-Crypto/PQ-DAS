@@ -94,10 +94,13 @@ pub fn merge_many_type_1(
 ) -> Result<TypeTwoMultiSignature, ProverError> {
     let n_components = types_1.len();
     assert!(n_components > 0, "merge_many_type_1 requires at least one input");
-    assert!(
-        n_components <= MAX_RECURSIONS,
-        "merge_many_type_1: at most {MAX_RECURSIONS} components are supported"
-    );
+    if n_components > MAX_RECURSIONS {
+        return Err(ProverError::LimitExceeded {
+            what: "type-1 components",
+            actual: n_components,
+            max: MAX_RECURSIONS,
+        });
+    }
     let whir_config = default_whir_config(log_inv_rate);
     let bytecode = get_aggregation_bytecode();
 
@@ -199,10 +202,13 @@ pub fn split_type_2(
 ) -> Result<TypeOneMultiSignature, ProverError> {
     let n_components = type_2.info.len();
     assert!(index < n_components, "split index {index} out of bounds");
-    assert!(
-        n_components <= MAX_RECURSIONS,
-        "split_type_2: at most {MAX_RECURSIONS} components are supported"
-    );
+    if n_components > MAX_RECURSIONS {
+        return Err(ProverError::LimitExceeded {
+            what: "type-2 components",
+            actual: n_components,
+            max: MAX_RECURSIONS,
+        });
+    }
     let whir_config = default_whir_config(log_inv_rate);
     let bytecode = get_aggregation_bytecode();
 

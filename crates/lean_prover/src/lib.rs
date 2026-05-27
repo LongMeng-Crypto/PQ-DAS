@@ -67,8 +67,16 @@ pub enum ProverError {
     Runner(RunnerError),
     UnknownMessage,
     MultipleMessages,
-    InvalidPublicInputSize { expected: usize, actual: usize },
+    InvalidPublicInputSize {
+        expected: usize,
+        actual: usize,
+    },
     InvalidChildProof(ProofError),
+    LimitExceeded {
+        what: &'static str,
+        actual: usize,
+        max: usize,
+    },
 }
 
 impl From<TooBigTableError> for ProverError {
@@ -100,6 +108,9 @@ impl Display for ProverError {
                 write!(f, "Invalid public input size: expected {}, actual {}", expected, actual)
             }
             Self::InvalidChildProof(e) => write!(f, "Invalid child proof: {}", e),
+            Self::LimitExceeded { what, actual, max } => {
+                write!(f, "Too many {}: {} (max {})", what, actual, max)
+            }
         }
     }
 }
