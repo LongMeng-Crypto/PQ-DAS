@@ -1380,7 +1380,12 @@ fn check_expr_scoping(expr: &Expression, ctx: &Context) -> Result<(), String> {
     match expr {
         Expression::Value(simple_expr) => check_simple_expr_scoping(simple_expr, ctx),
         Expression::Lambda { param, body } => {
-            // Lambda parameters are in scope within the body
+            // Lambda binders cannot shadow enclosing names: later passes substitute by name only.
+            if ctx.defines(param) {
+                return Err(format!(
+                    "Lambda parameter '{param}' shadows a name visible in an enclosing scope"
+                ));
+            }
             let mut lambda_ctx = Context::new();
             lambda_ctx.scopes = ctx.scopes.clone();
             lambda_ctx.const_arrays = ctx.const_arrays.clone();
