@@ -1,4 +1,3 @@
-use backend::PrimeCharacteristicRing;
 use lean_compiler::*;
 use lean_vm::*;
 
@@ -10,13 +9,7 @@ fn test_data_dir() -> String {
 /// Helper to get the number of cycles for a program file
 fn get_cycle_count(path: &str) -> usize {
     let bytecode = compile_program(&ProgramSource::Filepath(path.to_string()));
-    let result = try_execute_bytecode(
-        &bytecode,
-        &[F::ZERO; PUBLIC_INPUT_LEN],
-        &ExecutionWitness::default(),
-        false,
-    )
-    .unwrap();
+    let result = try_execute_bytecode(&bytecode, &Default::default(), &ExecutionWitness::default(), false).unwrap();
     result.pcs.len()
 }
 

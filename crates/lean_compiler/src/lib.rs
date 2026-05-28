@@ -110,12 +110,34 @@ impl ProgramSource {
                 .ok_or_else(|| format!("Embedded entry '{entry}' not found or not valid UTF-8"))?
                 .to_string(),
         };
-        let mut result = raw;
-        for (key, value) in flags.replacements.iter() {
-            result = result.replace(key, value);
-        }
-        Ok(result)
+        Ok(apply_replacements(&raw, &flags.replacements))
     }
+}
+
+fn apply_replacements(source: &str, replacements: &BTreeMap<String, String>) -> String {
+    if replacements.is_empty() {
+        return source.to_string();
+    }
+    let is_ident = |c: char| c.is_alphanumeric() || c == '_';
+    let mut result = String::with_capacity(source.len());
+    let mut word = String::new(); // current run of identifier characters
+    let flush = |result: &mut String, word: &mut String| {
+        match replacements.get(word.as_str()) {
+            Some(value) => result.push_str(value),
+            None => result.push_str(word),
+        }
+        word.clear();
+    };
+    for c in source.chars() {
+        if is_ident(c) {
+            word.push(c);
+        } else {
+            flush(&mut result, &mut word);
+            result.push(c);
+        }
+    }
+    flush(&mut result, &mut word);
+    result
 }
 
 #[derive(Debug, Clone, Default)]

@@ -108,6 +108,18 @@ def main():
     return
 ```
 
+### Compile-time placeholders
+
+The Rust compiler API (`CompilationFlags::replacements`) substitutes values into the source before
+parsing. By convention a placeholder is named `<NAME>_PLACEHOLDER` and used as a constant value:
+
+```python
+V = V_PLACEHOLDER          # replaced by the configured value
+```
+
+Only whole identifiers are matched, so a placeholder is never replaced inside a larger name like
+`xV_PLACEHOLDER` or `V_PLACEHOLDER_2`.
+
 ## Functions
 
 ```python

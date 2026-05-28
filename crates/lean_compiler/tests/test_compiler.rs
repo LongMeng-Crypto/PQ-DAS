@@ -55,7 +55,7 @@ def div_ext_2(n, d):
         ..ExecutionWitness::default()
     };
     let bytecode = compile_program(&ProgramSource::Raw(program.to_string()));
-    try_execute_bytecode(&bytecode, &[F::ZERO; PUBLIC_INPUT_LEN], &witness, false).unwrap();
+    try_execute_bytecode(&bytecode, &Default::default(), &witness, false).unwrap();
 }
 
 fn test_data_dir() -> String {
@@ -105,6 +105,27 @@ fn test_all_errors() {
 }
 
 #[test]
+fn test_placeholder_replacement_respects_identifier_boundaries() {
+    let program = r#"
+def main():
+    x1 = 5
+    xPLACEHOLDER = 7
+    assert x1 == 5
+    assert xPLACEHOLDER == 7
+    assert PLACEHOLDER == 1
+    return
+"#;
+    let mut replacements = std::collections::BTreeMap::new();
+    replacements.insert("PLACEHOLDER".to_string(), "1".to_string());
+    let bytecode = try_compile_program_with_flags(
+        &ProgramSource::Raw(program.to_string()),
+        CompilationFlags { replacements },
+    )
+    .unwrap();
+    try_execute_bytecode(&bytecode, &Default::default(), &ExecutionWitness::default(), false).unwrap();
+}
+
+#[test]
 fn test_all_programs() {
     let test_dir = test_data_dir();
     let paths = find_files(&test_dir, "program_", ".py");
@@ -123,7 +144,7 @@ fn test_all_programs() {
             Ok(b) => b,
             Err(err) => panic!("Program {} failed to compile: {:?}", path, err),
         };
-        if let Err(err) = try_execute_bytecode(&bytecode, &[F::ZERO; PUBLIC_INPUT_LEN], &witness, false) {
+        if let Err(err) = try_execute_bytecode(&bytecode, &Default::default(), &witness, false) {
             panic!("Program {} failed with error: {:?}", path, err);
         }
     }
@@ -165,13 +186,7 @@ def func(a, b):
     return
    "#;
     let bytecode = compile_program(&ProgramSource::Raw(program.to_string()));
-    let n_cycles = execute_bytecode(
-        &bytecode,
-        &[F::ZERO; PUBLIC_INPUT_LEN],
-        &ExecutionWitness::default(),
-        false,
-    )
-    .n_cycles();
+    let n_cycles = execute_bytecode(&bytecode, &Default::default(), &ExecutionWitness::default(), false).n_cycles();
     assert!(n_cycles < 1100);
 }
 
@@ -202,7 +217,7 @@ def factorial(n):
     let time_sequential = Instant::now();
     let exec_seq = execute_bytecode(
         &compiled_sequencial,
-        &[F::ZERO; PUBLIC_INPUT_LEN],
+        &Default::default(),
         &ExecutionWitness::default(),
         false,
     );
@@ -210,7 +225,7 @@ def factorial(n):
     let time_parallel = Instant::now();
     let exec_par = execute_bytecode(
         &compiled_parallel,
-        &[F::ZERO; PUBLIC_INPUT_LEN],
+        &Default::default(),
         &ExecutionWitness::default(),
         false,
     );

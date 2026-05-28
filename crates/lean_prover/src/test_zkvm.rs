@@ -278,7 +278,7 @@ def main():
     return
 "#;
 
-    test_zk_vm_helper(program_str, &[F::ZERO; PUBLIC_INPUT_LEN]);
+    test_zk_vm_helper(program_str, &Default::default());
 }
 
 #[test]
@@ -318,12 +318,7 @@ def fibonacci_const(a, b, n: Const):
     let flags = CompilationFlags {
         replacements: [("FIB_N_PLACEHOLDER".to_string(), n.to_string())].into_iter().collect(),
     };
-    test_zk_vm_helper_with_witness(
-        program_str,
-        &[F::ZERO; PUBLIC_INPUT_LEN],
-        ExecutionWitness::default(),
-        flags,
-    );
+    test_zk_vm_helper_with_witness(program_str, &Default::default(), ExecutionWitness::default(), flags);
 }
 
 fn test_zk_vm_helper(program_str: &str, public_input: &[F; PUBLIC_INPUT_LEN]) {
