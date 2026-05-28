@@ -394,7 +394,7 @@ impl Hint {
             // Handled by the runner's parallel dispatch; no-op in sequential mode.
             Self::ParallelBatchStart { .. } => {}
             Self::HintWitness { name, destination } => {
-                let data = consume_next_hint_entry(ctx.hints.named_hints, name);
+                let data = consume_next_hint_entry(ctx.hints.named_hints, name)?;
                 let dest_addr = match destination {
                     HintWitnessDestination::Inline { offset } => ctx.fp + *offset,
                     HintWitnessDestination::Indirect { ptr_offset } => ctx.memory.get(ctx.fp + *ptr_offset)?.to_usize(),
@@ -406,19 +406,23 @@ impl Hint {
     }
 }
 
-fn consume_next_hint_entry<'h>(named_hints: &mut HashMap<String, NamedHintCursor<'h>>, name: &str) -> &'h [F] {
-    let cursor = named_hints.get_mut(name).unwrap_or_else(|| {
-        panic!("hint_witness: no hint named '{name}'");
-    });
+fn consume_next_hint_entry<'h>(
+    named_hints: &mut HashMap<String, NamedHintCursor<'h>>,
+    name: &str,
+) -> Result<&'h [F], RunnerError> {
+    let cursor = named_hints
+        .get_mut(name)
+        .ok_or_else(|| RunnerError::InvalidHintWitness(format!("no hint named '{name}'")))?;
     let entries = cursor.entries;
     let index = cursor.index;
-    assert!(
-        index < entries.len(),
-        "hint_witness: exhausted entries for '{name}' (index={index}, len={})",
-        entries.len()
-    );
+    if index >= entries.len() {
+        return Err(RunnerError::InvalidHintWitness(format!(
+            "exhausted entries for '{name}' (len={})",
+            entries.len()
+        )));
+    }
     cursor.index += 1;
-    &entries[index]
+    Ok(&entries[index])
 }
 
 impl Display for Hint {

@@ -306,13 +306,16 @@ fn execute_bytecode_helper(
     resolve_deref_hints(&mut memory, &trace.pending_deref_hints).map_err(|e| (pc, e))?;
     assert_eq!(pc, bytecode.ending_pc);
     for (name, cursor) in &named_hints {
-        assert_eq!(
-            cursor.index,
-            cursor.entries.len(),
-            "Not all entries of named hint '{name}' were consumed ({} of {} used)",
-            cursor.index,
-            cursor.entries.len(),
-        );
+        if cursor.index != cursor.entries.len() {
+            return Err((
+                pc,
+                RunnerError::InvalidHintWitness(format!(
+                    "not all entries of named hint '{name}' were consumed ({} of {} used)",
+                    cursor.index,
+                    cursor.entries.len(),
+                )),
+            ));
+        }
     }
     trace.pcs.push(pc);
     trace.fps.push(fp);
