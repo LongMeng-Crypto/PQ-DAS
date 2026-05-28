@@ -23,6 +23,7 @@ use crate::compilation::{
     BYTECODE_CLAIM_OFFSET, MAX_RECURSIONS, MAX_XMSS_AGGREGATED, MAX_XMSS_DUPLICATES, N_MERKLE_CHUNKS_FOR_SLOT,
     PREAMBLE_MEMORY_LEN, TYPE1_FLAG, get_aggregation_bytecode, type1_input_data_size_padded,
 };
+use crate::decompress_size_prepended_bounded;
 use crate::verify_inner;
 
 /// Number of tweaks in the table: 1 encoding + V*CHAIN_LENGTH chains + 1 wots_pk + LOG_LIFETIME merkle
@@ -93,7 +94,7 @@ impl TypeOneMultiSignature {
     }
 
     pub fn decompress(bytes: &[u8]) -> Option<Self> {
-        let decompressed = lz4_flex::decompress_size_prepended(bytes).ok()?;
+        let decompressed = decompress_size_prepended_bounded(bytes)?;
         let (value, rest) = postcard::take_from_bytes::<Self>(&decompressed).ok()?;
         rest.is_empty().then_some(value)
     }

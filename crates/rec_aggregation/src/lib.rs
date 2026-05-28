@@ -27,6 +27,18 @@ pub struct InnerVerified {
     pub sorted_table_perm: Vec<usize>,
 }
 
+// The LZ4 size prefix is attacker-controlled; cap it before allocating. Real
+// multisigs compress to ~1x (high-entropy proof + hashes), so 8x is ample.
+const MAX_DECOMPRESS_RATIO: usize = 8;
+
+pub(crate) fn decompress_size_prepended_bounded(bytes: &[u8]) -> Option<Vec<u8>> {
+    let declared = u32::from_le_bytes(bytes.get(..4)?.try_into().ok()?) as usize;
+    if declared > bytes.len().saturating_mul(MAX_DECOMPRESS_RATIO) {
+        return None;
+    }
+    lz4_flex::decompress_size_prepended(bytes).ok()
+}
+
 pub(crate) fn verify_inner(input_data: Vec<F>, proof: Proof<F>) -> Result<InnerVerified, ProofError> {
     let input_data_hash = poseidon_compress_slice(&input_data);
     let bytecode = get_aggregation_bytecode();

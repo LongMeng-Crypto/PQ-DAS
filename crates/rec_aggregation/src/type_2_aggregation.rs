@@ -16,6 +16,7 @@ use crate::bytecode_claims::reduce_bytecode_claims;
 use crate::compilation::{
     BYTECODE_CLAIM_OFFSET, MAX_RECURSIONS, PREAMBLE_MEMORY_LEN, TYPE2_FLAG, get_aggregation_bytecode,
 };
+use crate::decompress_size_prepended_bounded;
 use crate::type_1_aggregation::{
     TypeOneInfo, TypeOneMultiSignature, check_type_one_pubkeys, extract_merkle_hint_blobs, verify_type_1,
 };
@@ -58,7 +59,7 @@ impl TypeTwoMultiSignature {
     }
 
     pub fn decompress(bytes: &[u8]) -> Option<Self> {
-        let decompressed = lz4_flex::decompress_size_prepended(bytes).ok()?;
+        let decompressed = decompress_size_prepended_bounded(bytes)?;
         let (value, rest) = postcard::take_from_bytes::<Self>(&decompressed).ok()?;
         rest.is_empty().then_some(value)
     }
