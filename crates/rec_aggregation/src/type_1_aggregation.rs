@@ -94,7 +94,8 @@ impl TypeOneMultiSignature {
 
     pub fn decompress(bytes: &[u8]) -> Option<Self> {
         let decompressed = lz4_flex::decompress_size_prepended(bytes).ok()?;
-        postcard::from_bytes(&decompressed).ok()
+        let (value, rest) = postcard::take_from_bytes::<Self>(&decompressed).ok()?;
+        rest.is_empty().then_some(value)
     }
 
     pub(crate) fn bytecode_claim_flat(&self) -> Vec<F> {
