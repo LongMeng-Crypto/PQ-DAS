@@ -7,7 +7,7 @@ use crate::execution::{ExecutionHistory, Memory};
 use crate::isa::Bytecode;
 use crate::isa::hint::{DiagnosticState, Hint, HintState, NamedHintCursor};
 use crate::isa::instruction::{InstructionContext, InstructionCounts};
-use crate::{ALL_TABLES, CodeAddress, HintExecutionContext, MemOrConstant, N_TABLES, STARTING_PC, Table, TableTrace};
+use crate::{ALL_TABLES, CodeAddress, HintExecutionContext, MAX_LOG_MEMORY_SIZE, MemOrConstant, N_TABLES, STARTING_PC, Table, TableTrace};
 use backend::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use utils::ToUsize;
@@ -415,6 +415,9 @@ fn handle_parallel_batch(
     }
 
     let max_addr = batch.batch_fp + (n_iters + 1) * stride;
+    if max_addr > 1 << MAX_LOG_MEMORY_SIZE {
+        return Err(RunnerError::OutOfMemory);
+    }
     if max_addr > memory.0.len() {
         memory.0.resize(max_addr, None);
     }
