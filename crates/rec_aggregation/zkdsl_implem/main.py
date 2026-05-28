@@ -111,7 +111,7 @@ def main():
     # ============ Standard type-1: single (message, slot) aggregation ============
     n_sigs = data_buf[1]
     assert n_sigs != 0
-    assert n_sigs - 1 < MAX_N_SIGS
+    assert n_sigs <= MAX_N_SIGS
 
     tweak_table: Mut = TWEAK_TABLE_ADDR
     hint_witness("tweak_table", tweak_table)
@@ -128,7 +128,7 @@ def main():
     assert n_recursions <= MAX_RECURSIONS
 
     n_dup = meta[1]
-    assert n_dup < MAX_N_DUPS  # TODO increase
+    assert n_dup <= MAX_N_DUPS  # TODO increase
 
     all_pubkeys = Array((n_sigs + n_dup) * PUB_KEY_SIZE)
     hint_witness("pubkeys", all_pubkeys)
@@ -183,7 +183,7 @@ def main():
     for rec_idx in range(0, n_recursions):
         n_sub = aggregate_sizes[rec_idx]
         assert n_sub != 0
-        assert n_sub < MAX_N_SIGS
+        assert n_sub <= MAX_N_SIGS
         sub_indices_arr = Array(n_sub)
         hint_witness("sub_indices", sub_indices_arr)
 
