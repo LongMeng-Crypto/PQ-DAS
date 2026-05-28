@@ -7,7 +7,10 @@ use crate::execution::{ExecutionHistory, Memory};
 use crate::isa::Bytecode;
 use crate::isa::hint::{DiagnosticState, Hint, HintState, NamedHintCursor};
 use crate::isa::instruction::{InstructionContext, InstructionCounts};
-use crate::{ALL_TABLES, CodeAddress, HintExecutionContext, MAX_LOG_MEMORY_SIZE, MemOrConstant, N_TABLES, STARTING_PC, Table, TableTrace};
+use crate::{
+    ALL_TABLES, CodeAddress, HintExecutionContext, MAX_LOG_MEMORY_SIZE, MemOrConstant, N_TABLES, STARTING_PC, Table,
+    TableTrace,
+};
 use backend::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use utils::ToUsize;

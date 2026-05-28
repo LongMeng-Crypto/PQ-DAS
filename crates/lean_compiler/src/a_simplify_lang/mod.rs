@@ -319,7 +319,7 @@ pub fn simplify_program(mut program: Program) -> Result<SimpleProgram, String> {
     }
 
     let mut mutable_loop_counter = Counter::new();
-    transform_mutable_in_loops_in_program(&mut program, &mut mutable_loop_counter);
+    transform_mutable_in_loops_in_program(&mut program, &mut mutable_loop_counter)?;
 
     let mut new_functions = BTreeMap::new();
     let mut counters = Counters::default();
@@ -1040,10 +1040,11 @@ fn find_assigned_external_vars_helper(
     }
 }
 
-fn transform_mutable_in_loops_in_program(program: &mut Program, counter: &mut Counter) {
+fn transform_mutable_in_loops_in_program(program: &mut Program, counter: &mut Counter) -> Result<(), String> {
     for func in program.functions.values_mut() {
-        transform_mutable_in_loops_in_lines(&mut func.body, &program.const_arrays, counter, &BTreeSet::new());
+        transform_mutable_in_loops_in_lines(&mut func.body, &program.const_arrays, counter, &BTreeSet::new())?;
     }
+    Ok(())
 }
 
 fn transform_mutable_in_loops_in_lines(
@@ -1051,13 +1052,13 @@ fn transform_mutable_in_loops_in_lines(
     const_arrays: &BTreeMap<String, ConstArrayValue>,
     counter: &mut Counter,
     outer_mut_vars: &BTreeSet<Var>,
-) {
+) -> Result<(), String> {
     let mut local_mut_vars = outer_mut_vars.clone();
     let mut i = 0;
     while i < lines.len() {
         match &mut lines[i] {
             Line::ForLoop { body, loop_kind, .. } if loop_kind.is_unroll() => {
-                transform_mutable_in_loops_in_lines(body, const_arrays, counter, &local_mut_vars);
+                transform_mutable_in_loops_in_lines(body, const_arrays, counter, &local_mut_vars)?;
                 i += 1;
             }
             Line::ForLoop {
@@ -1069,13 +1070,19 @@ fn transform_mutable_in_loops_in_lines(
                 location,
             } => {
                 let loop_kind = loop_kind.clone();
-                transform_mutable_in_loops_in_lines(body, const_arrays, counter, &local_mut_vars);
+                transform_mutable_in_loops_in_lines(body, const_arrays, counter, &local_mut_vars)?;
                 let modified_vars = find_modified_external_vars(body, const_arrays, &local_mut_vars);
 
                 if modified_vars.is_empty() {
                     // No mutable variables modified, no transformation needed
                     i += 1;
                     continue;
+                }
+
+                if loop_kind.is_parallel() {
+                    return Err(format!(
+                        "parallel loop at {location} carries mutable variable(s) {modified_vars:?} across iterations; use a sequential `range` loop"
+                    ));
                 }
 
                 let suffix = counter.get_next();
@@ -1240,7 +1247,7 @@ fn transform_mutable_in_loops_in_lines(
             }
             line @ (Line::IfCondition { .. } | Line::Match { .. }) => {
                 for block in line.nested_blocks_mut() {
-                    transform_mutable_in_loops_in_lines(block, const_arrays, counter, &local_mut_vars);
+                    transform_mutable_in_loops_in_lines(block, const_arrays, counter, &local_mut_vars)?;
                 }
                 i += 1;
             }
@@ -1257,6 +1264,7 @@ fn transform_mutable_in_loops_in_lines(
             }
         }
     }
+    Ok(())
 }
 
 fn check_function_always_returns(func: &SimpleFunction) -> Result<(), String> {
