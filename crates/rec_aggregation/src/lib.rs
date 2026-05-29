@@ -19,7 +19,7 @@ pub use type_1_aggregation::{TypeOneInfo, TypeOneMultiSignature, aggregate_type_
 pub use type_2_aggregation::{
     TypeTwoMultiSignature, merge_many_type_1, split_type_2, split_type_2_by_msg, verify_type_2,
 };
-use utils::poseidon_compress_slice;
+use utils::poseidon_hash_slice;
 
 #[allow(missing_debug_implementations)]
 pub struct InnerVerified {
@@ -43,7 +43,7 @@ pub(crate) fn decompress_size_prepended_bounded(bytes: &[u8]) -> Option<Vec<u8>>
 }
 
 pub(crate) fn verify_inner(input_data: Vec<F>, proof: Proof<F>) -> Result<InnerVerified, ProofError> {
-    let input_data_hash = poseidon_compress_slice(&input_data);
+    let input_data_hash = poseidon_hash_slice(&input_data);
     let bytecode = get_aggregation_bytecode();
     let (verif, raw_proof) = verify_execution(bytecode, &input_data_hash, proof)?;
     Ok(InnerVerified {

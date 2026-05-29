@@ -1,7 +1,7 @@
 use backend::*;
 use lean_prover::fiat_shamir_domain_sep;
 use lean_vm::*;
-use utils::{get_poseidon16, poseidon_compress_slice, poseidon16_compress_pair};
+use utils::{get_poseidon16, poseidon_hash_slice, poseidon16_permute};
 
 use crate::compilation::BYTECODE_CLAIM_OFFSET;
 use crate::{InnerVerified, get_aggregation_bytecode};
@@ -127,14 +127,23 @@ pub(crate) fn extract_bytecode_claim_from_input_data(
 pub(crate) fn hash_bytecode_claims(claims: &[Evaluation<EF>]) -> [F; DIGEST_LEN] {
     let mut running_hash = [F::ZERO; DIGEST_LEN];
     running_hash[0] = F::from_usize(claims.len() * DIGEST_LEN);
-    for eval in claims {
+    let n = claims.len();
+    for (i, eval) in claims.iter().enumerate() {
         let mut ef_data: Vec<EF> = eval.point.0.clone();
         ef_data.push(eval.value);
         let mut data = flatten_scalars_to_base::<F, EF>(&ef_data);
         data.resize(data.len().next_multiple_of(DIGEST_LEN), F::ZERO);
 
-        let claim_hash = poseidon_compress_slice(&data);
-        running_hash = poseidon16_compress_pair(&running_hash, &claim_hash);
+        let claim_hash = poseidon_hash_slice(&data);
+        let mut input = [F::ZERO; 16];
+        input[..DIGEST_LEN].copy_from_slice(&running_hash);
+        input[DIGEST_LEN..].copy_from_slice(&claim_hash);
+        let permuted = poseidon16_permute(input);
+        running_hash = if i + 1 == n {
+            permuted[DIGEST_LEN..].try_into().unwrap() // final squeeze: rate
+        } else {
+            permuted[..DIGEST_LEN].try_into().unwrap() // carry: capacity
+        };
     }
     running_hash
 }

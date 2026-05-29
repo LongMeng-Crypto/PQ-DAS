@@ -7,7 +7,7 @@ use lean_prover::prove_execution::prove_execution;
 use lean_vm::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use utils::poseidon_compress_slice;
+use utils::poseidon_hash_slice;
 
 use crate::InnerVerified;
 use crate::bytecode_claims::compute_bytecode_value_at;
@@ -121,7 +121,7 @@ pub fn merge_many_type_1(
 
     let digests: Vec<[F; DIGEST_LEN]> = verified_children.iter().map(|v| v.input_data_hash).collect();
     let pub_input_data = build_type2_input_data(&digests, &reduced_claims.final_claim_flat());
-    let public_input_digest = poseidon_compress_slice(&pub_input_data);
+    let public_input_digest = poseidon_hash_slice(&pub_input_data);
 
     let bytecode_value_hint_blobs: Vec<Vec<F>> = verified_children
         .iter()
@@ -187,7 +187,7 @@ pub fn verify_type_2(sig: &TypeTwoMultiSignature) -> Result<InnerVerified, Proof
     let digests = sig
         .info
         .iter()
-        .map(|info| poseidon_compress_slice(&info.build_input_data()))
+        .map(|info| poseidon_hash_slice(&info.build_input_data()))
         .collect::<Vec<_>>();
     let input_data = build_type2_input_data(&digests, &sig.bytecode_claim_flat());
     verify_inner(input_data, sig.proof.proof.clone())
@@ -241,7 +241,7 @@ pub fn split_type_2(
     let mut outer_type_1 = type_2.info[index].clone();
     outer_type_1.bytecode_claim = reduced_claims.final_claim.clone();
     let ourer_input_data = outer_type_1.build_input_data();
-    let outer_digest = poseidon_compress_slice(&ourer_input_data);
+    let outer_digest = poseidon_hash_slice(&ourer_input_data);
 
     let inner_input_data: Vec<F> = type_2.info[index].build_input_data();
 

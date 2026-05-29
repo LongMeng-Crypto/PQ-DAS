@@ -187,22 +187,30 @@ def main():
         sub_indices_arr = Array(n_sub)
         hint_witness("sub_indices", sub_indices_arr)
 
-
         running_hash: Mut = build_iv(n_sub * PUB_KEY_SIZE)
-        n_chunks, remainder = euclidian_div_runtime(n_sub, PARTIAL_UNROLL_BATCH)
+        n_first = n_sub - 1
+        n_chunks, remainder = euclidian_div_runtime(n_first, PARTIAL_UNROLL_BATCH)
         j: Mut = 0
         for _ in range(0, n_chunks):
             for u in unroll(0, PARTIAL_UNROLL_BATCH):
-                counter, running_hash = absorb_recursive_pubkey(j + u, sub_indices_arr, n_total, all_pubkeys, buffer, counter, running_hash)
+                counter, running_hash = absorb_recursive_pubkey(
+                    j + u, sub_indices_arr, n_total, all_pubkeys, buffer, counter, running_hash
+                )
             j += PARTIAL_UNROLL_BATCH
         # Tail iterations
         tail_counter, tail_running_hash = match_range(
             remainder,
             range(0, PARTIAL_UNROLL_BATCH),
-            lambda r: absorb_n_pubkeys_const(r, j, sub_indices_arr, n_total, all_pubkeys, buffer, counter, running_hash),
+            lambda r: absorb_n_pubkeys_const(
+                r, j, sub_indices_arr, n_total, all_pubkeys, buffer, counter, running_hash
+            ),
         )
         counter = tail_counter
         running_hash = tail_running_hash
+        # Final pubkey (index n_sub - 1)
+        counter, running_hash = absorb_recursive_pubkey_final(
+            n_sub - 1, sub_indices_arr, n_total, all_pubkeys, buffer, counter, running_hash
+        )
 
         type1_data_buf = Array(TYPE_1_INPUT_DATA_SIZE_PADDED)
         type1_data_buf[0] = TYPE_1_FLAG
@@ -238,15 +246,21 @@ def main():
 
 
 def reduce_bytecode_claims(bytecode_claims, n_bytecode_claims, bytecode_claim_output, initial_fiat_shamir_cap):
+    debug_assert(n_bytecode_claims != 0)
     bytecode_claims_hash: Mut = build_iv(n_bytecode_claims * DIGEST_LEN)
-    for i in range(0, n_bytecode_claims):
+    for i in range(0, n_bytecode_claims - 1):
         claim_ptr = bytecode_claims[i]
         for k in unroll(BYTECODE_CLAIM_SIZE, BYTECODE_CLAIM_SIZE_PADDED):
             assert claim_ptr[k] == 0
         claim_hash = slice_hash_ret(claim_ptr, BYTECODE_CLAIM_SIZE_PADDED / DIGEST_LEN)
         new_hash = Array(DIGEST_LEN)
-        poseidon16_compress(bytecode_claims_hash, claim_hash, new_hash)
+        poseidon16_permute_half(bytecode_claims_hash, claim_hash, new_hash)
         bytecode_claims_hash = new_hash
+    last_claim_ptr = bytecode_claims[n_bytecode_claims - 1]
+    for k in unroll(BYTECODE_CLAIM_SIZE, BYTECODE_CLAIM_SIZE_PADDED):
+        assert last_claim_ptr[k] == 0
+    last_claim_hash = slice_hash_ret(last_claim_ptr, BYTECODE_CLAIM_SIZE_PADDED / DIGEST_LEN)
+    bytecode_claims_hash = sponge_finalize(bytecode_claims_hash, last_claim_hash)
 
     bytecode_sumcheck_proof = Array(BYTECODE_SUMCHECK_PROOF_SIZE)
     hint_witness("bytecode_sumcheck_proof", bytecode_sumcheck_proof)
@@ -297,21 +311,34 @@ def ensure_well_formed_input_data(data_buf, initial_fiat_shamir_cap, flag):
 
 
 @inline
-def absorb_recursive_pubkey(j, sub_indices_arr, n_total, all_pubkeys, buffer, counter_in, running_hash_in):
+def _pubkey_absorb_prep(j, sub_indices_arr, n_total, all_pubkeys, buffer, counter_in):
     idx = sub_indices_arr[j]
     assert idx < n_total
     buffer[idx] = counter_in
-    new_counter = counter_in + 1
-    pk = all_pubkeys + idx * PUB_KEY_SIZE
+    return counter_in + 1, all_pubkeys + idx * PUB_KEY_SIZE
+
+
+@inline
+def absorb_recursive_pubkey(j, sub_indices_arr, n_total, all_pubkeys, buffer, counter_in, running_hash_in):
+    new_counter, pk = _pubkey_absorb_prep(j, sub_indices_arr, n_total, all_pubkeys, buffer, counter_in)
     new_hash = Array(DIGEST_LEN)
-    poseidon16_compress(running_hash_in, pk, new_hash)
+    poseidon16_permute_half(running_hash_in, pk, new_hash)
     return new_counter, new_hash
 
 
-def absorb_n_pubkeys_const(n: Const, j_start, sub_indices_arr, n_total, all_pubkeys, buffer, counter_in, running_hash_in):
+@inline
+def absorb_recursive_pubkey_final(j, sub_indices_arr, n_total, all_pubkeys, buffer, counter_in, running_hash_in):
+    new_counter, pk = _pubkey_absorb_prep(j, sub_indices_arr, n_total, all_pubkeys, buffer, counter_in)
+    return new_counter, sponge_finalize(running_hash_in, pk)
+
+
+def absorb_n_pubkeys_const(
+    n: Const, j_start, sub_indices_arr, n_total, all_pubkeys, buffer, counter_in, running_hash_in
+):
     counter: Mut = counter_in
     running_hash: Mut = running_hash_in
     for u in unroll(0, n):
-        counter, running_hash = absorb_recursive_pubkey(j_start + u, sub_indices_arr, n_total, all_pubkeys, buffer, counter, running_hash)
+        counter, running_hash = absorb_recursive_pubkey(
+            j_start + u, sub_indices_arr, n_total, all_pubkeys, buffer, counter, running_hash
+        )
     return counter, running_hash
-

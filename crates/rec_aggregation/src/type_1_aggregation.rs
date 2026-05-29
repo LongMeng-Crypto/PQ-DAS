@@ -4,7 +4,7 @@ use lean_prover::fiat_shamir_domain_sep;
 use lean_prover::prove_execution::{ExecutionProof, prove_execution};
 use lean_vm::*;
 use tracing::instrument;
-use utils::poseidon_compress_slice;
+use utils::poseidon_hash_slice;
 use xmss::CHAIN_LENGTH;
 use xmss::make_tweak;
 use xmss::{
@@ -114,7 +114,7 @@ impl TypeOneInfo {
 
     pub(crate) fn build_input_data(&self) -> Vec<F> {
         let tweak_table = compute_tweak_table(self.slot);
-        let tweaks_hash = poseidon_compress_slice(&tweak_table);
+        let tweaks_hash = poseidon_hash_slice(&tweak_table);
         build_type1_input_data(
             self.pubkeys.len(),
             &hash_pubkeys(&self.pubkeys),
@@ -129,7 +129,7 @@ impl TypeOneInfo {
 
 pub(crate) fn hash_pubkeys(pub_keys: &[XmssPublicKey]) -> [F; DIGEST_LEN] {
     let flat: Vec<F> = pub_keys.iter().flat_map(|pk| pk.flaten().into_iter()).collect();
-    poseidon_compress_slice(&flat)
+    poseidon_hash_slice(&flat)
 }
 
 /// Tweak slots are 4-FE [tw[0], tw[1], 0, 0]
@@ -289,7 +289,7 @@ pub(crate) fn aggregate_type_1_with_min_padding(
     }
 
     let tweak_table = compute_tweak_table(slot);
-    let tweaks_hash = poseidon_compress_slice(&tweak_table);
+    let tweaks_hash = poseidon_hash_slice(&tweak_table);
 
     let reduced_claims = reduce_bytecode_claims(&verified_children);
 
@@ -302,7 +302,7 @@ pub(crate) fn aggregate_type_1_with_min_padding(
         &reduced_claims.final_claim_flat(),
         bytecode,
     );
-    let public_input = poseidon_compress_slice(&pub_input_data);
+    let public_input = poseidon_hash_slice(&pub_input_data);
 
     let mut claimed: HashSet<XmssPublicKey> = HashSet::new();
     let mut dup_pub_keys: Vec<XmssPublicKey> = Vec::new();
