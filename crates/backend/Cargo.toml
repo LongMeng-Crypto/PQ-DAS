@@ -9,7 +9,7 @@ poly = { path = "poly", package = "mt-poly" }
 sumcheck = { path = "sumcheck", package = "mt-sumcheck" }
 field = { path = "field", package = "mt-field" }
 air = { path = "air", package = "mt-air" }
-rayon.workspace = true
+parallel.workspace = true
 whir = { path = "../whir", package = "mt-whir" }
 tracing.workspace = true
 fiat-shamir = { path = "fiat-shamir", package = "mt-fiat-shamir" }

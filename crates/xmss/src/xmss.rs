@@ -73,23 +73,32 @@ pub enum XmssKeyGenError {
     InvalidRange,
 }
 
+fn fill<T: Send>(sequential: bool, data: &mut [T], f: impl Fn(usize, &mut T) + Sync) {
+    if sequential {
+        data.iter_mut().enumerate().for_each(|(i, out)| f(i, out));
+    } else {
+        parallel::par_for_each_mut(data, f);
+    }
+}
+
 pub fn xmss_key_gen(
     seed: [u8; 32],
     slot_start: u32,
     slot_end: u32,
+    sequential: bool,
 ) -> Result<(XmssSecretKey, XmssPublicKey), XmssKeyGenError> {
     if slot_start > slot_end || slot_end as u64 >= (1 << LOG_LIFETIME) {
         return Err(XmssKeyGenError::InvalidRange);
     }
     let public_param: PublicParam = gen_public_param(&seed);
     // Level 0: WOTS leaf hashes for slots in [slot_start, slot_end]
-    let leaves: Vec<Digest> = (slot_start..=slot_end)
-        .into_par_iter()
-        .map(|slot| {
-            let wots = gen_wots_secret_key(&seed, slot, public_param);
-            wots.public_key().hash(public_param, slot)
-        })
-        .collect();
+    let n_leaves = (slot_end - slot_start + 1) as usize;
+    let mut leaves: Vec<Digest> = unsafe { uninitialized_vec(n_leaves) };
+    fill(sequential, &mut leaves, |i, out| {
+        let slot = slot_start + i as u32;
+        let wots = gen_wots_secret_key(&seed, slot, public_param);
+        *out = wots.public_key().hash(public_param, slot);
+    });
     let mut merkle_tree = vec![leaves];
     // Build levels 1..=LOG_LIFETIME.
     // At level l, we store nodes with index in [(slot_start >> l), (slot_end >> l)].
@@ -101,30 +110,31 @@ pub fn xmss_key_gen(
         let prev_top: u64 = (slot_end as u64) >> (level - 1);
         let nodes: Vec<Digest> = {
             let prev = &merkle_tree[level - 1];
-            (base..=top)
-                .into_par_iter()
-                .map(|i| {
-                    let left_idx = 2 * i;
-                    let right_idx = 2 * i + 1;
-                    let left = if left_idx >= prev_base && left_idx <= prev_top {
-                        prev[(left_idx - prev_base) as usize]
-                    } else {
-                        gen_random_node(&seed, level - 1, left_idx)
-                    };
-                    let right = if right_idx >= prev_base && right_idx <= prev_top {
-                        prev[(right_idx - prev_base) as usize]
-                    } else {
-                        gen_random_node(&seed, level - 1, right_idx)
-                    };
-                    let merkle_data = build_merkle_data(
-                        make_tweak(TWEAK_TYPE_MERKLE, level, i as u32),
-                        &public_param,
-                        &left,
-                        &right,
-                    );
-                    poseidon16_compress(merkle_data)[..XMSS_DIGEST_LEN].try_into().unwrap()
-                })
-                .collect()
+            let n_nodes = (top - base + 1) as usize;
+            let mut nodes: Vec<Digest> = unsafe { uninitialized_vec(n_nodes) };
+            fill(sequential, &mut nodes, |k, out| {
+                let i = base + k as u64;
+                let left_idx = 2 * i;
+                let right_idx = 2 * i + 1;
+                let left = if left_idx >= prev_base && left_idx <= prev_top {
+                    prev[(left_idx - prev_base) as usize]
+                } else {
+                    gen_random_node(&seed, level - 1, left_idx)
+                };
+                let right = if right_idx >= prev_base && right_idx <= prev_top {
+                    prev[(right_idx - prev_base) as usize]
+                } else {
+                    gen_random_node(&seed, level - 1, right_idx)
+                };
+                let merkle_data = build_merkle_data(
+                    make_tweak(TWEAK_TYPE_MERKLE, level, i as u32),
+                    &public_param,
+                    &left,
+                    &right,
+                );
+                *out = poseidon16_compress(merkle_data)[..XMSS_DIGEST_LEN].try_into().unwrap();
+            });
+            nodes
         };
         merkle_tree.push(nodes);
     }

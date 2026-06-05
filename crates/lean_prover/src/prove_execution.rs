@@ -164,7 +164,7 @@ pub fn prove_execution(
         .collect();
     let _span = info_span!("Computing shifted columns for AIR sumcheck").entered();
     let shifted_rows: Vec<Vec<Vec<F>>> = ALL_TABLES
-        .par_iter()
+        .iter()
         .zip(&column_refs)
         .map(|(table, cols)| compute_shifted_columns(table.n_shift_columns(), cols))
         .collect();
