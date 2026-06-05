@@ -8,8 +8,6 @@ use rayon::prelude::*;
 
 use crate::Compression;
 
-pub const DIGEST_ELEMS: usize = 8;
-
 /// A Merkle tree storing only the digest layers (no leaf data).
 #[derive(Debug, Clone)]
 pub struct MerkleTree<F, const DIGEST_ELEMS: usize> {

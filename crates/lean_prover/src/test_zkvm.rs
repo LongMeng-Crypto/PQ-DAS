@@ -5,7 +5,6 @@ use backend::*;
 use lean_compiler::*;
 use lean_vm::*;
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use utils::{init_tracing, poseidon16_compress, poseidon16_permute};
 
 const N: usize = 11;
 const M: usize = 3;
@@ -432,7 +431,7 @@ fn test_zk_vm_helper_with_witness(
     witness: ExecutionWitness,
     flags: CompilationFlags,
 ) {
-    utils::init_tracing();
+    init_tracing();
     let bytecode = compile_program_with_flags(&ProgramSource::Raw(program_str.to_string()), flags);
     let time = std::time::Instant::now();
     let starting_log_inv_rate = 1;

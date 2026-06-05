@@ -102,10 +102,10 @@ dependencies = [
  "mt-poly",
  "mt-sumcheck",
  "mt-symetric",
- "mt-utils",
  "mt-whir",
  "rayon",
  "tracing",
+ "utils",
 ]
 
 [[package]]
@@ -498,7 +498,6 @@ dependencies = [
  "serde_json",
  "sub_protocols",
  "system-info",
- "utils",
  "xmss",
  "zk-alloc",
 ]
@@ -515,7 +514,6 @@ dependencies = [
  "rand",
  "sub_protocols",
  "tracing",
- "utils",
  "xmss",
 ]
 
@@ -535,7 +533,6 @@ dependencies = [
  "serde_json",
  "sub_protocols",
  "tracing",
- "utils",
  "xmss",
 ]
 
@@ -549,7 +546,6 @@ dependencies = [
  "pest_derive",
  "rand",
  "tracing",
- "utils",
  "xmss",
 ]
 
@@ -619,10 +615,10 @@ dependencies = [
  "mt-field",
  "mt-koala-bear",
  "mt-symetric",
- "mt-utils",
  "rayon",
  "serde",
  "tracing",
+ "utils",
 ]
 
 [[package]]
@@ -630,13 +626,13 @@ name = "mt-field"
 version = "0.1.0"
 dependencies = [
  "itertools",
- "mt-utils",
  "num-bigint",
  "paste",
  "rand",
  "rayon",
  "serde",
  "tracing",
+ "utils",
 ]
 
 [[package]]
@@ -645,13 +641,13 @@ version = "0.1.0"
 dependencies = [
  "itertools",
  "mt-field",
- "mt-utils",
  "num-bigint",
  "paste",
  "rand",
  "rayon",
  "serde",
  "tracing",
+ "utils",
 ]
 
 [[package]]
@@ -661,11 +657,12 @@ dependencies = [
  "itertools",
  "mt-field",
  "mt-koala-bear",
- "mt-utils",
  "rand",
  "rayon",
  "serde",
  "system-info",
+ "tracing",
+ "utils",
 ]
 
 [[package]]
@@ -691,13 +688,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mt-utils"
-version = "0.1.0"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "mt-whir"
 version = "0.1.0"
 dependencies = [
@@ -708,13 +698,13 @@ dependencies = [
  "mt-poly",
  "mt-sumcheck",
  "mt-symetric",
- "mt-utils",
  "rand",
  "rayon",
  "system-info",
  "tracing",
  "tracing-forest",
  "tracing-subscriber",
+ "utils",
 ]
 
 [[package]]
@@ -947,7 +937,6 @@ dependencies = [
  "serde",
  "sub_protocols",
  "tracing",
- "utils",
  "xmss",
  "zk-alloc",
 ]
@@ -1099,7 +1088,6 @@ dependencies = [
  "lean_vm",
  "rand",
  "tracing",
- "utils",
 ]
 
 [[package]]
@@ -1264,8 +1252,9 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 name = "utils"
 version = "0.1.0"
 dependencies = [
- "backend",
  "rand",
+ "rayon",
+ "serde",
  "tracing",
  "tracing-forest",
  "tracing-subscriber",
@@ -1470,7 +1459,6 @@ dependencies = [
  "rand",
  "serde",
  "sha3",
- "utils",
 ]
 
 [[package]]

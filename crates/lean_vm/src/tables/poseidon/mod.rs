@@ -3,7 +3,6 @@ use std::any::TypeId;
 use crate::*;
 use crate::{execution::memory::MemoryAccess, tables::poseidon::trace_gen::generate_trace_rows_for_perm};
 use backend::*;
-use utils::{ToUsize, poseidon16_compress, poseidon16_permute};
 
 /// Dispatch `mds_fft_16` through concrete types.
 /// For `SymbolicExpression` we use the dense form so the zkDSL generator can

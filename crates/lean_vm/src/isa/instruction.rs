@@ -16,7 +16,6 @@ use backend::*;
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use std::ops::AddAssign;
-use utils::ToUsize;
 
 /// Complete set of VM instruction types with comprehensive operation support
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

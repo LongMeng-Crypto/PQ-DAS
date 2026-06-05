@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-use backend::*;
+use rayon::prelude::*;
 
 pub fn from_end<A>(slice: &[A], n: usize) -> &[A] {
     assert!(n <= slice.len());
