@@ -798,6 +798,8 @@ def next_mle_const(x, y, n: Const):
 
 
 def _verify_log2_small(n, partial_sums_24, log2: Const):
+    if log2 < 2:
+        assert False
     # For log2 in [3, 23]: verify n has exactly log2 bits
     assert partial_sums_24[log2 - 1] == n
     assert partial_sums_24[log2 - 2] != n
@@ -821,7 +823,7 @@ def log2_ceil_runtime(n):
         _, partial_sums_24 = checked_decompose_bits(n)
         match_range(
             log2,
-            range(2, 24),
+            range(0, 24),
             lambda i: _verify_log2_small(n, partial_sums_24, i),
             range(24, 31),
             lambda i: _verify_log2_large(n, i),
