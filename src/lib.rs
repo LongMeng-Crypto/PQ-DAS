@@ -12,7 +12,14 @@ pub use xmss::{MESSAGE_LEN_FE, XmssPublicKey, XmssSecretKey, XmssSignature, xmss
 pub type F = KoalaBear;
 
 /// Call once before proving.
+///
+/// # Safety
+/// Never generate two proofs concurrently in one process.
+///
+/// (The arena allocator has a single shared region per process, so concurrent proving corrupts each proof's buffers)
+/// Use separate processes to parallelize
 pub fn setup_prover() {
+    zk_alloc::enable_arena();
     parallel::init();
     rec_aggregation::init_aggregation_bytecode();
     precompute_dft_twiddles::<F>(1 << 24);
@@ -22,13 +29,3 @@ pub fn setup_prover() {
 pub fn setup_verifier() {
     rec_aggregation::init_aggregation_bytecode();
 }
-
-/// Bump-arena allocator.
-///
-/// To enable, set it as the `#[global_allocator]` in your binary. Then bracket each proving
-/// call with [`begin_phase`] / [`end_phase`] and **clone the outputs after [`end_phase`]** so
-/// the cloned copy lands in the system allocator before the next [`begin_phase`] resets the
-/// arena slabs.
-///
-/// See `tests/test_zk_alloc.rs` for a runnable end-to-end example.
-pub use zk_alloc::{ZkAllocator, begin_phase, end_phase};

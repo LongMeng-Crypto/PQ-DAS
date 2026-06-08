@@ -3,6 +3,7 @@ use crate::{EFPacking, PF};
 use ::utils::{iter_array_chunks_padded, log2_ceil_usize, log2_strict_usize};
 use field::*;
 use system_info::NUM_THREADS;
+use zk_alloc::ArenaVec;
 
 const LOG_NUM_THREADS: usize = log2_ceil_usize(NUM_THREADS);
 const LOG_BATCHED_TILE_SIZE: usize = 14;
@@ -59,26 +60,29 @@ fn par_eval_eq<In, Buf, Out>(
 /// defined on the boolean hypercube by: ∀ (x_1, ..., x_n) ∈ {0, 1}^n,
 /// P(x_1, ..., x_n) = Π_{i=1}^{n} (x_i.α_i + (1 - x_i).(1 - α_i))
 /// (often denoted as P(x) = eq(x, evals))
-pub fn eval_eq<F: ExtensionField<PF<F>>>(eval: &[F]) -> Vec<F> {
+/// Returns an arena-backed table (see [`ArenaVec`]). Every eq table is phase-local proof scratch
+/// (consumed within the proving phase that built it, or system-backed when the arena is inactive,
+/// e.g. in the verifier), so it never outlives a `begin_phase()` reset.
+pub fn eval_eq<F: ExtensionField<PF<F>>>(eval: &[F]) -> ArenaVec<F> {
     eval_eq_scaled(eval, F::ONE)
 }
 
-pub fn eval_eq_scaled<F: ExtensionField<PF<F>>>(eval: &[F], scalar: F) -> Vec<F> {
+pub fn eval_eq_scaled<F: ExtensionField<PF<F>>>(eval: &[F], scalar: F) -> ArenaVec<F> {
     // Alloc memory without initializing it to zero.
-    // This is safe because we overwrite it inside `eval_eq`.
-    let mut out = unsafe { uninitialized_vec(1 << eval.len()) };
+    // This is safe because we overwrite it inside `compute_eval_eq`.
+    let mut out = unsafe { ArenaVec::uninitialized(1 << eval.len()) };
     compute_eval_eq::<PF<F>, F, false>(eval, &mut out, scalar);
     out
 }
 
-pub fn eval_eq_packed<F: ExtensionField<PF<F>>>(eval: &[F]) -> Vec<EFPacking<F>> {
+pub fn eval_eq_packed<F: ExtensionField<PF<F>>>(eval: &[F]) -> ArenaVec<EFPacking<F>> {
     eval_eq_packed_scaled(eval, F::ONE)
 }
 
-pub fn eval_eq_packed_scaled<F: ExtensionField<PF<F>>>(eval: &[F], scalar: F) -> Vec<EFPacking<F>> {
+pub fn eval_eq_packed_scaled<F: ExtensionField<PF<F>>>(eval: &[F], scalar: F) -> ArenaVec<EFPacking<F>> {
     // Alloc memory without initializing it to zero.
-    // This is safe because we overwrite it inside `eval_eq`.
-    let mut out = unsafe { uninitialized_vec(1 << (eval.len() - packing_log_width::<F>())) };
+    // This is safe because we overwrite it inside `compute_eval_eq_packed`.
+    let mut out = unsafe { ArenaVec::uninitialized(1 << (eval.len() - packing_log_width::<F>())) };
     compute_eval_eq_packed::<F, false>(eval, &mut out, scalar);
     out
 }
@@ -105,7 +109,7 @@ where
         let packed = &mut out[selector >> shift];
         let mut unpacked: Vec<EF> = unpack_extension(&[*packed]);
         compute_sparse_eval_eq::<EF>(selector & ((1 << shift) - 1), eval, &mut unpacked, scalar);
-        *packed = pack_extension(&unpacked)[0];
+        *packed = pack_extension::<_, Vec<_>>(&unpacked)[0];
         return;
     }
 
@@ -180,7 +184,7 @@ where
     let (log_chunks, n_chunks) = parallel_split();
     if eval.len() <= log_packing_width + 1 + log_chunks {
         // Small case: evaluate unpacked, then pack lanes into `out`.
-        let mut unpacked = EF::zero_vec(1 << eval.len());
+        let mut unpacked = unsafe { ArenaVec::zeroed(1 << eval.len()) };
         eval_eq_basic::<_, _, _, false>(eval, &mut unpacked, scalar);
         out.iter_mut()
             .zip(unpacked.chunks_exact(packing_width))
@@ -275,7 +279,7 @@ pub fn compute_eval_eq_base_packed<F, EF, const INITIALIZED: bool>(
     let (log_chunks, n_chunks) = parallel_split();
     if eval.len() <= log_packing_width + 1 + log_chunks {
         // Small case: evaluate unpacked, then pack lanes into `out`.
-        let mut unpacked = EF::zero_vec(1 << eval.len());
+        let mut unpacked = unsafe { ArenaVec::zeroed(1 << eval.len()) };
         eval_eq_basic::<_, _, _, false>(eval, &mut unpacked, scalar);
         out.iter_mut()
             .zip(unpacked.chunks_exact(packing_width))
@@ -344,7 +348,7 @@ pub fn compute_eval_eq_base_packed_batched<F, EF>(
         .map(|(eval, &scalar)| {
             let middle = &eval[n_prefix_levels..n - log_packing_width];
             let eq_suffix = packed_eq_poly::<F, F>(&eval[n - log_packing_width..], F::ONE);
-            let mut eq_prefix: Vec<EF> = unsafe { uninitialized_vec(1 << n_prefix_levels) };
+            let mut eq_prefix: ArenaVec<EF> = unsafe { ArenaVec::uninitialized(1 << n_prefix_levels) };
             eval_eq_basic::<F, F, EF, false>(&eval[..n_prefix_levels], &mut eq_prefix, scalar);
             (eq_prefix, middle, eq_suffix)
         })
@@ -884,7 +888,7 @@ pub fn compute_eval_eq_packed_dual<EF>(
 
     let (log_chunks, n_chunks) = parallel_split();
     if eval_a.len() <= log_packing_width + 1 + log_chunks {
-        let mut output_no_packing = EF::zero_vec(1 << eval_a.len());
+        let mut output_no_packing = unsafe { ArenaVec::zeroed(1 << eval_a.len()) };
         eval_eq_basic::<_, _, _, false>(eval_a, &mut output_no_packing, scalar_a);
         eval_eq_basic::<_, _, _, true>(eval_b, &mut output_no_packing, scalar_b);
         out.iter_mut()
@@ -1139,7 +1143,7 @@ fn packed_eq_poly<F: Field, EF: ExtensionField<F>>(eval: &[EF], scalar: EF) -> E
     debug_assert_eq!(F::Packing::WIDTH, 1 << eval.len());
 
     // We build up the evaluations of the equality polynomial in buffer.
-    let mut buffer = EF::zero_vec(1 << eval.len());
+    let mut buffer = unsafe { ArenaVec::zeroed(1 << eval.len()) };
     buffer[0] = scalar;
 
     fill_buffer(eval.iter().rev(), &mut buffer);

@@ -137,7 +137,7 @@ pub struct MemoryLookupGroup {
 
 #[derive(Debug, Default)]
 pub struct TableTrace {
-    pub columns: Vec<Vec<F>>,
+    pub columns: Vec<ArenaVec<F>>,
     pub non_padded_n_rows: usize,
     pub log_n_rows: VarCount,
 }
@@ -145,7 +145,7 @@ pub struct TableTrace {
 impl TableTrace {
     pub fn new<A: TableT>(air: &A) -> Self {
         Self {
-            columns: vec![Vec::new(); air.n_columns_total()],
+            columns: (0..air.n_columns_total()).map(|_| ArenaVec::new()).collect(),
             non_padded_n_rows: 0, // filled later
             log_n_rows: 0,        // filled later
         }
@@ -166,10 +166,10 @@ pub struct ExtraDataForBuses<EF: ExtensionField<PF<EF>>> {
     pub alpha_powers: Vec<EF>,
 }
 impl<EF: ExtensionField<PF<EF>>> ExtraDataForBuses<EF> {
-    pub fn new(logup_alphas_eq_poly: Vec<EF>, alpha_powers: Vec<EF>) -> Self {
+    pub fn new(logup_alphas_eq_poly: &[EF], alpha_powers: Vec<EF>) -> Self {
         let logup_alphas_eq_poly_packed = logup_alphas_eq_poly.iter().map(|a| EFPacking::<EF>::from(*a)).collect();
         Self {
-            logup_alphas_eq_poly,
+            logup_alphas_eq_poly: logup_alphas_eq_poly.to_vec(),
             logup_alphas_eq_poly_packed,
             alpha_powers,
         }

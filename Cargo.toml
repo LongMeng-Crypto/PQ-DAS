@@ -83,8 +83,6 @@ include_dir = "0.7"
 
 [features]
 prox-gaps-conjecture = ["rec_aggregation/prox-gaps-conjecture"]
-# Build with the plain system allocator instead of zk-alloc (for comparison/debugging).
-standard-alloc = ["rec_aggregation/standard-alloc"]
 
 [dependencies]
 clap.workspace = true
@@ -102,3 +100,4 @@ system-info.workspace = true
 
 [profile.release]
 lto = "thin"
+codegen-units = 1

@@ -10,6 +10,7 @@ use poly::*;
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use tracing_forest::{ForestLayer, util::LevelFilter};
 use tracing_subscriber::{EnvFilter, Registry, layer::SubscriberExt, util::SubscriberInitExt};
+use zk_alloc::ArenaVec;
 
 type F = KoalaBear;
 type EF = QuinticExtensionFieldKB;
@@ -104,7 +105,7 @@ fn test_run_whir() {
 
     precompute_dft_twiddles::<F>(1 << F::TWO_ADICITY);
 
-    let polynomial: MleOwned<EF> = MleOwned::Base(polynomial);
+    let polynomial: MleOwned<EF> = MleOwned::Base(ArenaVec::from_iter(polynomial));
 
     let time = Instant::now();
     let witness = params.commit(&mut prover_state, &polynomial, num_coeffs);

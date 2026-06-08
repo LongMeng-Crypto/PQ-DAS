@@ -89,10 +89,10 @@ where
                 let _span = info_span!("chunk-bit-reversing columns").entered();
                 let chunk_size = 1usize << pivot;
                 let shift = usize::BITS as usize - pivot;
-                let mut bit_reversed: Vec<Vec<PFPacking<EF>>> = (0..cols.len()).map(|_| Vec::new()).collect();
+                let mut bit_reversed: Vec<ArenaVec<PFPacking<EF>>> = vec![ArenaVec::new(); cols.len()];
                 parallel::par_chunks_mut(&mut bit_reversed, 1, |i, out_slot| {
                     let src = cols[i];
-                    let mut dst: Vec<PFPacking<EF>> = unsafe { uninitialized_vec(src.len()) };
+                    let mut dst: ArenaVec<PFPacking<EF>> = unsafe { ArenaVec::uninitialized(src.len()) };
                     let src_u = PFPacking::<EF>::unpack_slice(src);
                     let dst_u = PFPacking::<EF>::unpack_slice_mut(&mut dst);
                     for (src_chunk, dst_chunk) in src_u.chunks_exact(chunk_size).zip(dst_u.chunks_exact_mut(chunk_size))
@@ -657,12 +657,12 @@ pub fn prove_batched_air_sumcheck<'a, EF: ExtensionField<PF<EF>>>(
     MultilinearPoint(challenges)
 }
 
-pub fn compute_shifted_columns<F: Field>(n_shift_columns: usize, columns: &[&[F]]) -> Vec<Vec<F>> {
+pub fn compute_shifted_columns<F: Field>(n_shift_columns: usize, columns: &[&[F]]) -> Vec<ArenaVec<F>> {
     // Convention: the first `n_shift_columns` columns are the ones that get shifted.
-    let mut out: Vec<Vec<F>> = (0..n_shift_columns).map(|_| Vec::new()).collect();
+    let mut out: Vec<ArenaVec<F>> = (0..n_shift_columns).map(|_| ArenaVec::new()).collect();
     parallel::par_chunks_mut(&mut out, 1, |i, slot| {
         let column = columns[i];
-        let mut shifted = unsafe { uninitialized_vec(column.len()) };
+        let mut shifted = unsafe { ArenaVec::<F>::uninitialized(column.len()) };
         shifted[..column.len() - 1].copy_from_slice(&column[1..]);
         shifted[column.len() - 1] = column[column.len() - 1];
         slot[0] = shifted;
