@@ -2,13 +2,12 @@ use crate::*;
 use crate::{EFPacking, PF};
 use ::utils::{iter_array_chunks_padded, log2_ceil_usize, log2_strict_usize};
 use field::*;
-use system_info::NUM_THREADS;
+use system_info::num_threads;
 use zk_alloc::ArenaVec;
 
-const LOG_NUM_THREADS: usize = log2_ceil_usize(NUM_THREADS);
 const LOG_BATCHED_TILE_SIZE: usize = 14;
 
-/// log2 oversubscription for the eq_mle fan-out: emit `NUM_THREADS << this` chunks so the
+/// log2 oversubscription for the eq_mle fan-out: emit `num_threads() << this` chunks so the
 /// pool's task counter rebalances across heterogeneous cores (e.g. P/E). `0` = one chunk
 /// per worker; `2` (4x) is a conservative default that balances well without over-fragmenting.
 const PARALLEL_LOG_OVERSUB: usize = 2;
@@ -16,7 +15,7 @@ const PARALLEL_LOG_OVERSUB: usize = 2;
 /// `(log2(n_chunks), n_chunks)` for the parallel fan-out.
 #[inline]
 fn parallel_split() -> (usize, usize) {
-    let log_chunks = LOG_NUM_THREADS + PARALLEL_LOG_OVERSUB;
+    let log_chunks = log2_ceil_usize(num_threads()) + PARALLEL_LOG_OVERSUB;
     (log_chunks, 1 << log_chunks)
 }
 

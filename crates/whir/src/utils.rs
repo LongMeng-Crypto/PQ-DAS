@@ -183,7 +183,7 @@ fn prepare_evals_for_fft_unpacked<A: Copy + Send + Sync>(
         return out;
     }
 
-    let rows_per_band = ((system_info::L1_CACHE_SIZE / 2) / (dft_n_cols * size_of::<A>())).clamp(1, block_size);
+    let rows_per_band = ((system_info::l1_cache_size() / 2) / (dft_n_cols * size_of::<A>())).clamp(1, block_size);
     let band_len = rows_per_band * dft_n_cols;
 
     parallel::par_chunks_mut(&mut out, band_len, |band_idx, band| {
@@ -220,7 +220,7 @@ fn prepare_evals_for_fft_packed_extension<EF: ExtensionField<PF<EF>>>(
         return out;
     }
 
-    let rows_per_band = ((system_info::L1_CACHE_SIZE / 2) / (n_blocks * size_of::<EF>())).clamp(1, block_size);
+    let rows_per_band = ((system_info::l1_cache_size() / 2) / (n_blocks * size_of::<EF>())).clamp(1, block_size);
     let band_len = rows_per_band * n_blocks;
 
     parallel::par_chunks_mut(&mut out, band_len, |band_idx, band| {

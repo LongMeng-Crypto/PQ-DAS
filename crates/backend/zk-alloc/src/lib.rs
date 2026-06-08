@@ -8,7 +8,7 @@ use std::cell::Cell;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use system_info::NUM_THREADS;
+use system_info::num_threads;
 
 mod arena_cow;
 mod arena_vec;
@@ -27,8 +27,15 @@ macro_rules! arena_vec {
 
 const SLAB_SIZE: usize = 8 << 30; // 8 GiB; per-thread soft cap, overflow falls back to System
 const SLACK: usize = 4; // extra slabs for non-pool threads that allocate in a phase
-const MAX_THREADS: usize = NUM_THREADS + SLACK;
-const REGION_SIZE: usize = SLAB_SIZE * MAX_THREADS; // one contiguous region => O(1) pointer classification
+
+fn max_threads() -> usize {
+    num_threads() + SLACK
+}
+
+fn region_size() -> usize {
+    static SIZE: OnceLock<usize> = OnceLock::new();
+    *SIZE.get_or_init(|| SLAB_SIZE * max_threads())
+}
 
 /// Bumped by `begin_phase()`; a thread resets its slab when its cached `ARENA_GEN` lags — one store
 /// resets every thread, lock-free.
@@ -58,12 +65,13 @@ thread_local! {
 
 fn ensure_region() -> usize {
     *REGION.get_or_init(|| {
+        let size = region_size();
         // SAFETY: mmap returns a page-aligned pointer or null; lazily backed.
-        let ptr = unsafe { syscall::mmap_anonymous(REGION_SIZE) };
+        let ptr = unsafe { syscall::mmap_anonymous(size) };
         if ptr.is_null() {
             std::process::abort();
         }
-        unsafe { syscall::madvise(ptr, REGION_SIZE, syscall::MADV_NOHUGEPAGE) };
+        unsafe { syscall::madvise(ptr, size, syscall::MADV_NOHUGEPAGE) };
         ptr as usize
     })
 }
@@ -125,7 +133,7 @@ unsafe fn arena_alloc_cold(size: usize, align: usize) -> *mut u8 {
         if base == 0 {
             let region = ensure_region();
             let idx = THREAD_IDX.fetch_add(1, Ordering::Relaxed);
-            if idx >= MAX_THREADS {
+            if idx >= max_threads() {
                 ARENA_NO_SLAB.set(true);
                 return unsafe { std::alloc::System.alloc(Layout::from_size_align_unchecked(size, align)) };
             }
@@ -177,7 +185,7 @@ pub(crate) unsafe fn raw_dealloc(ptr: *mut u8, size: usize, align: usize) {
     let addr = ptr as usize;
     if REGION
         .get()
-        .is_some_and(|&base| addr >= base && addr < base + REGION_SIZE)
+        .is_some_and(|&base| addr >= base && addr < base + region_size())
     {
         return; // arena pointer — free is a no-op
     }

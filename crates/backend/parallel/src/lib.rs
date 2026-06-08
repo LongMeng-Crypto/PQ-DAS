@@ -23,8 +23,6 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Mutex, Once, OnceLock};
 use std::thread::Thread;
 
-use system_info::NUM_THREADS;
-
 /// Idle spins before a worker parks: long enough to stay hot across back-to-back dispatches,
 /// short enough to yield the core during sequential gaps.
 const SPIN_LIMIT: u32 = 1 << 12;
@@ -33,10 +31,10 @@ const SPIN_LIMIT: u32 = 1 << 12;
 /// million-task kernels to a few thousand claims.
 const MAX_CLAIM_BATCH: usize = 1 << 12;
 
-/// Worker count including the dispatcher (= build-time `NUM_THREADS`).
+/// Worker count including the dispatcher. Resolved once at runtime (see [`system_info::num_threads`]).
 #[must_use]
-pub const fn num_threads() -> usize {
-    NUM_THREADS
+pub fn num_threads() -> usize {
+    system_info::num_threads()
 }
 
 /// Chunk size for a flat fan-out: a few chunks per worker — fine enough for the counter to
@@ -44,7 +42,7 @@ pub const fn num_threads() -> usize {
 #[must_use]
 #[inline]
 pub fn recommended_chunk_size(n_items: usize) -> usize {
-    n_items.div_ceil(NUM_THREADS * 4).max(1)
+    n_items.div_ceil(num_threads() * 4).max(1)
 }
 
 thread_local! {
@@ -107,20 +105,12 @@ unsafe impl Send for Pool {}
 
 /// Idempotent warm-up: spawn workers and run one empty dispatch so the pool and the (macOS)
 /// lazily-allocated mutex exist before timed work; otherwise the pool inits on first use.
-///
-/// Also fail-fast if the machine's core count differs from the build-time [`NUM_THREADS`] (which
-/// sizes the pool): a mismatch silently over/under-subscribes every kernel.
 pub fn init() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
-        let actual = std::thread::available_parallelism().unwrap().get();
-        assert_eq!(
-            actual, NUM_THREADS,
-            "parallel pool built for {NUM_THREADS} threads but this machine reports {actual} -> please rebuild with env variable: LEANVM_NUM_THREADS={actual}"
-        );
         let _ = pool();
-        if NUM_THREADS > 1 {
-            for_each_index(NUM_THREADS, |_| {});
+        if num_threads() > 1 {
+            for_each_index(num_threads(), |_| {});
         }
     });
 }
@@ -128,7 +118,7 @@ pub fn init() {
 fn pool() -> &'static Pool {
     static POOL: OnceLock<&'static Pool> = OnceLock::new();
     POOL.get_or_init(|| {
-        let n = NUM_THREADS.max(1);
+        let n = num_threads().max(1);
         let p: &'static Pool = Box::leak(Box::new(Pool {
             job: UnsafeCell::new(None),
             generation: AtomicUsize::new(0),
@@ -200,6 +190,7 @@ fn drain(pool: &Pool) {
     // SAFETY: `job.f` borrows a `&dyn Fn` the blocked dispatcher keeps live.
     let f = unsafe { job.f.as_ref() };
     let n = job.n_tasks;
+    let nt = num_threads();
     let prev = IN_TASK.replace(true); // catch nested dispatch (see `for_each_chunk`)
     // Catch a task panic so it can't unwind across `worker_main` (skipping the `working`
     // decrement → deadlock) or poison the dispatch lock; `for_each_chunk` re-raises it.
@@ -210,7 +201,7 @@ fn drain(pool: &Pool) {
             if observed >= n {
                 break;
             }
-            let batch = ((n - observed) / (NUM_THREADS * 2)).clamp(1, MAX_CLAIM_BATCH);
+            let batch = ((n - observed) / (nt * 2)).clamp(1, MAX_CLAIM_BATCH);
             let start = pool.counter.fetch_add(batch, Ordering::Relaxed);
             if start >= n {
                 break;
@@ -232,7 +223,8 @@ pub fn for_each_chunk<F: Fn(usize, usize) + Sync>(n_tasks: usize, f: F) {
     assert!(!IN_TASK.get(), "nested parallel dispatch from within a pool task");
 
     // Trivial sizes / single-core builds run inline.
-    if NUM_THREADS <= 1 || n_tasks <= 1 {
+    let nt = num_threads();
+    if nt <= 1 || n_tasks <= 1 {
         if n_tasks > 0 {
             f(0, n_tasks);
         }
@@ -252,7 +244,7 @@ pub fn for_each_chunk<F: Fn(usize, usize) + Sync>(n_tasks: usize, f: F) {
     // SAFETY: sole writer — prior dispatch fully drained (`working == 0`), next not yet observed.
     unsafe { *pool.job.get() = Some(Job { f: f_erased, n_tasks }) };
     pool.counter.store(0, Ordering::Relaxed);
-    pool.working.store(NUM_THREADS - 1, Ordering::Release);
+    pool.working.store(nt - 1, Ordering::Release);
     pool.generation.fetch_add(1, Ordering::SeqCst); // publish; SeqCst guards the park protocol
 
     // Wake only parked workers; spinning ones see the bump for free.
@@ -389,7 +381,7 @@ pub fn par_fill<T: Send, F: Fn(usize) -> T + Sync>(dst: &mut [T], build: F) {
 /// `run(slot, start, end)` fires once per claimed batch with that worker's slot, so state
 /// accumulates across its batches. Returns the slots (rest `None`) for the caller to combine.
 fn drain_into_slots<S: Send>(n_tasks: usize, run: impl Fn(&mut Option<S>, usize, usize) + Sync) -> Vec<Option<S>> {
-    let mut slots: Vec<Option<S>> = (0..NUM_THREADS).map(|_| None).collect();
+    let mut slots: Vec<Option<S>> = (0..num_threads()).map(|_| None).collect();
     let ptr = SendPtr(slots.as_mut_ptr());
     for_each_chunk(n_tasks, |start, end| {
         // SAFETY: `current_worker_id() < NUM_THREADS` is unique per live worker → disjoint
