@@ -1,5 +1,5 @@
+use fiat_shamir::{FSProver, FSVerifier, ProverState, VerifierState};
 use koala_bear::{QuinticExtensionFieldKB, default_koalabear_poseidon1_16};
-use mt_fiat_shamir::{FSProver, FSVerifier, ProverState, VerifierState};
 use std::time::Instant;
 
 type EF = QuinticExtensionFieldKB;

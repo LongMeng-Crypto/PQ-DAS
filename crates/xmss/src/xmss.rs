@@ -1,9 +1,8 @@
 use std::sync::Mutex;
 
 use backend::*;
-use rand::{CryptoRng, RngExt, SeedableRng, rngs::StdRng};
+use rand::{CryptoRng, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
-use sha3::{Digest as Sha3Digest, Keccak256};
 
 use crate::*;
 
@@ -56,31 +55,26 @@ impl XmssPublicKey {
 }
 
 fn gen_wots_secret_key(seed: &[u8; 32], slot: u32, public_param: PublicParam) -> WotsSecretKey {
-    let mut hasher = Keccak256::new();
-    hasher.update(b"wots_secret_key");
-    hasher.update(seed);
-    hasher.update(slot.to_le_bytes());
-    let mut rng = StdRng::from_seed(hasher.finalize().into());
+    let rng_seed_fe = poseidon_prf(PRF_DOMAINSEP_WOTS_SECRET_KEY, seed, [slot as usize, 0]);
+    let mut rng_seed = [0u8; 32];
+    for (chunk, f) in rng_seed.chunks_exact_mut(4).zip(rng_seed_fe) {
+        chunk.copy_from_slice(&f.as_canonical_u32().to_le_bytes());
+    }
+    let mut rng = StdRng::from_seed(rng_seed);
     WotsSecretKey::random(&mut rng, public_param, slot)
 }
 
 fn gen_public_param(seed: &[u8; 32]) -> PublicParam {
-    let mut hasher = Keccak256::new();
-    hasher.update(b"public_param");
-    hasher.update(seed);
-    let mut rng = StdRng::from_seed(hasher.finalize().into());
-    rng.random()
+    poseidon_prf(PRF_DOMAINSEP_PUBLIC_PARAM, seed, [0, 0])[..PUBLIC_PARAM_LEN_FE]
+        .try_into()
+        .unwrap()
 }
 
 /// Deterministic pseudo-random digest for an out-of-range tree node.
-fn gen_random_node(seed: &[u8; 32], level: usize, index: u64) -> Digest {
-    let mut hasher = Keccak256::new();
-    hasher.update(b"random_node");
-    hasher.update(seed);
-    hasher.update((level as u64).to_le_bytes());
-    hasher.update(index.to_le_bytes());
-    let mut rng = StdRng::from_seed(hasher.finalize().into());
-    rng.random()
+fn gen_random_node(seed: &[u8; 32], level: usize, index: usize) -> Digest {
+    poseidon_prf(PRF_DOMAINSEP_RANDOM_NODE, seed, [level, index])[..XMSS_DIGEST_LEN]
+        .try_into()
+        .unwrap()
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
@@ -134,12 +128,12 @@ fn build_up(
                 let left = if left_idx >= prev_base && left_idx <= prev_top {
                     prev[(left_idx - prev_base) as usize]
                 } else {
-                    gen_random_node(seed, level - 1, left_idx)
+                    gen_random_node(seed, level - 1, left_idx as usize)
                 };
                 let right = if right_idx >= prev_base && right_idx <= prev_top {
                     prev[(right_idx - prev_base) as usize]
                 } else {
-                    gen_random_node(seed, level - 1, right_idx)
+                    gen_random_node(seed, level - 1, right_idx as usize)
                 };
                 let merkle_data = build_merkle_data(
                     make_tweak(TWEAK_TYPE_MERKLE, level, i as u32),
@@ -320,7 +314,7 @@ impl XmssSecretKey {
         if neighbour_index >= base && neighbour_index <= (hi >> level) {
             layers[level - level_base][(neighbour_index - base) as usize]
         } else {
-            gen_random_node(&self.seed, level, neighbour_index)
+            gen_random_node(&self.seed, level, neighbour_index as usize)
         }
     }
 }

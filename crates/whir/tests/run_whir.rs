@@ -5,18 +5,18 @@ use std::time::Instant;
 use fiat_shamir::{ProverState, VerifierState};
 use field::{Field, TwoAdicField};
 use koala_bear::{KoalaBear, QuinticExtensionFieldKB, default_koalabear_poseidon1_16};
-use mt_whir::*;
 use poly::*;
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use tracing_forest::{ForestLayer, util::LevelFilter};
 use tracing_subscriber::{EnvFilter, Registry, layer::SubscriberExt, util::SubscriberInitExt};
+use whir::*;
 use zk_alloc::ArenaVec;
 
 type F = KoalaBear;
 type EF = QuinticExtensionFieldKB;
 
 /*
-WHIR_NUM_VARIABLES=25 WHIR_LOG_INV_RATE=1 cargo test --release --package mt-whir --test run_whir -- test_run_whir --exact --nocapture
+WHIR_NUM_VARIABLES=25 WHIR_LOG_INV_RATE=1 cargo test --release --package whir --test run_whir -- test_run_whir --exact --nocapture
 */
 
 #[test]

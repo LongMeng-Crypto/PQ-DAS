@@ -2,7 +2,6 @@ use backend::*;
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use serde::{Deserialize, Serialize};
-use sha3::{Digest, Sha3_256};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -24,7 +23,7 @@ pub fn message_for_benchmark() -> [F; MESSAGE_LEN_FE] {
     std::array::from_fn(F::from_usize)
 }
 
-const CACHE_SCHEMA_VERSION: u32 = 2;
+const CACHE_SCHEMA_VERSION: u32 = 3;
 
 #[derive(Serialize, Deserialize)]
 struct SignersCacheFile {
@@ -33,17 +32,15 @@ struct SignersCacheFile {
 }
 
 fn cache_footprint(first_pubkey: &XmssPublicKey) -> u128 {
-    let mut hasher = Sha3_256::new();
-    hasher.update(NUM_BENCHMARK_SIGNERS.to_le_bytes());
-    hasher.update(BENCHMARK_SLOT.to_le_bytes());
-    for f in message_for_benchmark() {
-        hasher.update(f.as_canonical_u32().to_le_bytes());
-    }
-    for f in first_pubkey.merkle_root {
-        hasher.update(f.as_canonical_u32().to_le_bytes());
-    }
-    let hash = hasher.finalize();
-    u128::from_le_bytes(hash[..16].try_into().unwrap())
+    let mut input = [F::ZERO; 16];
+    input[0] = F::from_usize(NUM_BENCHMARK_SIGNERS);
+    input[1] = F::from_u32(BENCHMARK_SLOT);
+    input[2..2 + MESSAGE_LEN_FE].copy_from_slice(&message_for_benchmark());
+    input[2 + MESSAGE_LEN_FE..][..XMSS_DIGEST_LEN].copy_from_slice(&first_pubkey.merkle_root);
+    let digest = poseidon16_compress(input);
+    digest[..4]
+        .iter()
+        .fold(0u128, |acc, f| (acc << 32) | u128::from(f.as_canonical_u32()))
 }
 
 fn cache_dir() -> PathBuf {
