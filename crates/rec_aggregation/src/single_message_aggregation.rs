@@ -23,7 +23,6 @@ use crate::compilation::{
     PREAMBLE_MEMORY_LEN, SINGLE_MESSAGE_FLAG, get_aggregation_bytecode, single_message_input_data_size_padded,
     try_get_aggregation_bytecode,
 };
-use crate::decompress_size_prepended_bounded;
 use crate::verify_inner;
 
 /// Number of tweaks in the table: 1 encoding + V*CHAIN_LENGTH chains + 1 wots_pk + LOG_LIFETIME merkle
@@ -87,14 +86,12 @@ pub(crate) fn check_single_message_pubkeys(pubkeys: &[XmssPublicKey]) -> Result<
 }
 
 impl SingleMessageAggregateSignature {
-    pub fn compress(&self) -> Vec<u8> {
-        let encoded = postcard::to_allocvec(self).expect("postcard serialization failed");
-        lz4_flex::compress_prepend_size(&encoded)
+    pub fn to_bytes(&self) -> Vec<u8> {
+        postcard::to_allocvec(self).expect("postcard serialization failed")
     }
 
-    pub fn decompress(bytes: &[u8]) -> Option<Self> {
-        let decompressed = decompress_size_prepended_bounded(bytes)?;
-        let (value, rest) = postcard::take_from_bytes::<Self>(&decompressed).ok()?;
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        let (value, rest) = postcard::take_from_bytes::<Self>(bytes).ok()?;
         rest.is_empty().then_some(value)
     }
 }

@@ -23,7 +23,7 @@ pub fn message_for_benchmark() -> [F; MESSAGE_LEN_FE] {
     std::array::from_fn(F::from_usize)
 }
 
-const CACHE_SCHEMA_VERSION: u32 = 3;
+const CACHE_SCHEMA_VERSION: u32 = 4;
 
 #[derive(Serialize, Deserialize)]
 struct SignersCacheFile {
@@ -69,8 +69,7 @@ fn compute_signer(index: usize) -> (XmssPublicKey, XmssSignature) {
 
 fn try_load_cache(path: &PathBuf) -> Option<Vec<(XmssPublicKey, XmssSignature)>> {
     let data = fs::read(path).ok()?;
-    let decompressed = lz4_flex::decompress_size_prepended(&data).ok()?;
-    let cached: SignersCacheFile = postcard::from_bytes(&decompressed).ok()?;
+    let cached: SignersCacheFile = postcard::from_bytes(&data).ok()?;
     let valid = cached.schema_version == CACHE_SCHEMA_VERSION && cached.signatures.len() == NUM_BENCHMARK_SIGNERS;
     valid.then_some(cached.signatures)
 }
@@ -111,11 +110,10 @@ fn gen_benchmark_signers_cache() -> Vec<(XmssPublicKey, XmssSignature)> {
         signatures: signers.clone(),
     };
     let encoded = postcard::to_allocvec(&cache_file).expect("serialization failed");
-    let compressed = lz4_flex::compress_prepend_size(&encoded);
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
-    fs::write(&path, &compressed).expect("Failed to save benchmark cache");
+    fs::write(&path, &encoded).expect("Failed to save benchmark cache");
 
     signers
 }

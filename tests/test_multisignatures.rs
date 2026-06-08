@@ -75,9 +75,9 @@ fn test_single_message_aggregation() {
     )
     .unwrap();
 
-    let serialized_proof = final_sig.compress();
+    let serialized_proof = final_sig.to_bytes();
     println!("Serialized aggregated final: {} KiB", serialized_proof.len() / 1024);
-    let recovered = SingleMessageAggregateSignature::decompress(&serialized_proof).unwrap();
+    let recovered = SingleMessageAggregateSignature::from_bytes(&serialized_proof).unwrap();
 
     verify_single_message_aggregate(&recovered).unwrap();
 }
@@ -124,8 +124,8 @@ fn test_multi_message_aggregation() {
     assert_eq!(multi_message.info[0], info_a);
     assert_eq!(multi_message.info[1], info_b);
 
-    let compressed_multi_message = multi_message.compress();
-    let multi_message = MultiMessageAggregateSignature::decompress(&compressed_multi_message).unwrap();
+    let serialized_multi_message = multi_message.to_bytes();
+    let multi_message = MultiMessageAggregateSignature::from_bytes(&serialized_multi_message).unwrap();
     verify_multi_message_aggregate(&multi_message).unwrap();
 
     let time = Instant::now();

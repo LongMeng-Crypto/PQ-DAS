@@ -19,7 +19,6 @@ lean_compiler.workspace = true
 lean_prover.workspace = true
 backend.workspace = true
 postcard.workspace = true
-lz4_flex.workspace = true
 serde.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]

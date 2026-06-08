@@ -15,7 +15,6 @@ use crate::compilation::{
     BYTECODE_CLAIM_OFFSET, MAX_RECURSIONS, MULTI_MESSAGE_FLAG, PREAMBLE_MEMORY_LEN, get_aggregation_bytecode,
     try_get_aggregation_bytecode,
 };
-use crate::decompress_size_prepended_bounded;
 use crate::single_message_aggregation::{
     SingleMessageAggregateSignature, SingleMessageInfo, check_single_message_pubkeys, extract_merkle_hint_blobs,
     verify_single_message_aggregate,
@@ -55,14 +54,12 @@ impl<'de> Deserialize<'de> for MultiMessageAggregateSignature {
 }
 
 impl MultiMessageAggregateSignature {
-    pub fn compress(&self) -> Vec<u8> {
-        let encoded = postcard::to_allocvec(self).expect("postcard serialization failed");
-        lz4_flex::compress_prepend_size(&encoded)
+    pub fn to_bytes(&self) -> Vec<u8> {
+        postcard::to_allocvec(self).expect("postcard serialization failed")
     }
 
-    pub fn decompress(bytes: &[u8]) -> Option<Self> {
-        let decompressed = decompress_size_prepended_bounded(bytes)?;
-        let (value, rest) = postcard::take_from_bytes::<Self>(&decompressed).ok()?;
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        let (value, rest) = postcard::take_from_bytes::<Self>(bytes).ok()?;
         rest.is_empty().then_some(value)
     }
 
