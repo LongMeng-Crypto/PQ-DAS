@@ -1,7 +1,18 @@
-// Assumes build host == run host, for simplicity (to be changed in the future)
+// Build host == run host, unless `LEANVM_NUM_THREADS` sets the thread count explicitly.
+const NUM_THREADS_ENV: &str = "LEANVM_NUM_THREADS";
 
 fn main() {
-    let cores = std::thread::available_parallelism().unwrap().get();
+    let cores = match std::env::var(NUM_THREADS_ENV) {
+        Ok(s) => {
+            let n: usize = s
+                .trim()
+                .parse()
+                .unwrap_or_else(|_| panic!("{NUM_THREADS_ENV} must be a positive integer, got {s:?}"));
+            assert!(n >= 1, "{NUM_THREADS_ENV} must be >= 1, got {n}");
+            n
+        }
+        Err(_) => std::thread::available_parallelism().unwrap().get(),
+    };
     let l1_cache_size = match detect_l1_cache_size() {
         Some(size) => size,
         None => {
@@ -20,6 +31,7 @@ fn main() {
     )
     .unwrap();
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-env-changed={NUM_THREADS_ENV}");
 }
 
 #[cfg(target_os = "linux")]

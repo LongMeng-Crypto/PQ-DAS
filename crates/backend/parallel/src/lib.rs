@@ -116,7 +116,7 @@ pub fn init() {
         let actual = std::thread::available_parallelism().unwrap().get();
         assert_eq!(
             actual, NUM_THREADS,
-            "parallel pool built for {NUM_THREADS} threads but this machine reports {actual} -> please rebuild"
+            "parallel pool built for {NUM_THREADS} threads but this machine reports {actual} -> please rebuild with env variable: LEANVM_NUM_THREADS={actual}"
         );
         let _ = pool();
         if NUM_THREADS > 1 {
