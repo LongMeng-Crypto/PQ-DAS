@@ -1,10 +1,10 @@
 // cf https://github.com/Plonky3/Plonky3/blob/main/uni-stark/src/symbolic_builder.rs
 
 use core::fmt::Debug;
+use core::hash::{Hash, Hasher};
 use core::iter::{Product, Sum};
 use core::marker::PhantomData;
-use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
-use std::cell::RefCell;
+use core::ops::{Add, AddAssign, Deref, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use field::{Algebra, Field, InjectiveMonomial, PrimeCharacteristicRing};
 
@@ -67,49 +67,48 @@ pub enum SymbolicOperation {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct SymbolicNode<F: Copy> {
+pub struct SymbolicNode<F: Copy + 'static> {
     pub op: SymbolicOperation,
     pub lhs: SymbolicExpression<F>,
     pub rhs: SymbolicExpression<F>, // dummy (ZERO) for Neg
 }
 
-// We use an arena as a trick to allow SymbolicExpression to be Copy
-// (ugly trick but fine in practice since SymbolicExpression is only used once at the start of the program)
-thread_local! {
-    static ARENA: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+/// Handle to a leaked `SymbolicNode`, so that `SymbolicExpression` can be Copy.
+/// The leak is fine in practice since constraints are only built once at the start of the program.
+#[derive(Copy, Clone, Debug)]
+pub struct SymbolicNodeRef<F: Copy + 'static>(&'static SymbolicNode<F>);
+
+impl<F: Copy + 'static> Deref for SymbolicNodeRef<F> {
+    type Target = SymbolicNode<F>;
+
+    fn deref(&self) -> &SymbolicNode<F> {
+        self.0
+    }
 }
 
-fn alloc_node<F: Field>(node: SymbolicNode<F>) -> u32 {
-    ARENA.with(|arena| {
-        let mut bytes = arena.borrow_mut();
-        let node_size = std::mem::size_of::<SymbolicNode<F>>();
-        let idx = bytes.len();
-        bytes.resize(idx + node_size, 0);
-        unsafe {
-            std::ptr::write_unaligned(bytes.as_mut_ptr().add(idx) as *mut SymbolicNode<F>, node);
-        }
-        idx as u32
-    })
+impl<F: Copy + 'static> PartialEq for SymbolicNodeRef<F> {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(self.0, other.0)
+    }
 }
 
-/// # Safety
-/// `idx` must be an offset returned by `alloc_node::<F>` for the current (same `F`, uncleared) arena.
-pub unsafe fn get_node<F: Field>(idx: u32) -> SymbolicNode<F> {
-    ARENA.with(|arena| {
-        let bytes = arena.borrow();
-        assert!(
-            idx as usize + std::mem::size_of::<SymbolicNode<F>>() <= bytes.len(),
-            "arena index out of bounds"
-        );
-        unsafe { std::ptr::read_unaligned(bytes.as_ptr().add(idx as usize) as *const SymbolicNode<F>) }
-    })
+impl<F: Copy + 'static> Eq for SymbolicNodeRef<F> {}
+
+impl<F: Copy + 'static> Hash for SymbolicNodeRef<F> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        std::ptr::from_ref(self.0).hash(state);
+    }
+}
+
+fn alloc_node<F: Field>(node: SymbolicNode<F>) -> SymbolicNodeRef<F> {
+    SymbolicNodeRef(Box::leak(Box::new(node)))
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum SymbolicExpression<F: Copy> {
+pub enum SymbolicExpression<F: Copy + 'static> {
     Variable(SymbolicVariable<F>),
     Constant(F),
-    Operation(u32), // index into thread-local arena
+    Operation(SymbolicNodeRef<F>),
 }
 
 impl<F: Field> Default for SymbolicExpression<F> {
@@ -327,9 +326,6 @@ pub fn get_symbolic_constraints_and_bus_data_values<F: Field, A: Air>(air: &A) -
 where
     A::ExtraData: Default,
 {
-    // Clear the arena before building constraints
-    ARENA.with(|arena| arena.borrow_mut().clear());
-
     let mut builder = SymbolicAirBuilder::<F>::new(air.n_columns(), air.n_shift_columns());
     air.eval(&mut builder, &Default::default());
     (

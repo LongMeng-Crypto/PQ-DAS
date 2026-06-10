@@ -472,7 +472,7 @@ fn all_air_evals_in_zk_dsl() -> String {
 const AIR_INNER_VALUES_VAR: &str = "inner_evals";
 
 struct AirCodegenCtx {
-    expr_cache: HashMap<u32, String>,
+    expr_cache: HashMap<SymbolicNodeRef<F>, String>,
     consts_cache: HashMap<Vec<u32>, String>,
     ef_const_cache: HashMap<u32, String>,
     ctr: Counter,
@@ -590,7 +590,7 @@ fn eval_air_constraint(
                 ctx.expr_cache.insert(idx, v.clone());
                 return v;
             } else {
-                let node = unsafe { get_node::<F>(idx) };
+                let node = *idx;
                 let v = match node.op {
                     SymbolicOperation::Neg => {
                         let a = eval_air_constraint(node.lhs, None, ctx, res);
@@ -615,7 +615,12 @@ fn eval_air_constraint(
 
 /// Detect `0 + c0*x0 + c1*x1 + ... + cn*xn` in the expression tree and emit
 /// a single `dot_product_be` precompile call. Returns None if the pattern doesn't match.
-fn try_emit_dot_product_be(idx: u32, dest: Option<&str>, ctx: &mut AirCodegenCtx, res: &mut String) -> Option<String> {
+fn try_emit_dot_product_be(
+    idx: SymbolicNodeRef<F>,
+    dest: Option<&str>,
+    ctx: &mut AirCodegenCtx,
+    res: &mut String,
+) -> Option<String> {
     // Walk the left-spine of Add(_, Mul(Const, _)) nodes down to Constant(ZERO).
     let mut constants = Vec::new();
     let mut operands = Vec::new();
@@ -627,7 +632,7 @@ fn try_emit_dot_product_be(idx: u32, dest: Option<&str>, ctx: &mut AirCodegenCtx
                 if op_idx != idx && ctx.expr_cache.contains_key(&op_idx) {
                     return None;
                 }
-                let node = unsafe { get_node::<F>(op_idx) };
+                let node = *op_idx;
                 if node.op != SymbolicOperation::Add {
                     return None;
                 }
@@ -635,7 +640,7 @@ fn try_emit_dot_product_be(idx: u32, dest: Option<&str>, ctx: &mut AirCodegenCtx
                     SymbolicExpression::Operation(i) => i,
                     _ => return None,
                 };
-                let mul = unsafe { get_node::<F>(mul_idx) };
+                let mul = *mul_idx;
                 if mul.op != SymbolicOperation::Mul {
                     return None;
                 }
