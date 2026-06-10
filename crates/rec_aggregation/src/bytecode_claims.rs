@@ -26,9 +26,9 @@ pub(crate) fn compute_bytecode_value_at(point: &MultilinearPoint<EF>) -> EF {
     let bytecode = get_aggregation_bytecode();
     if point.iter().all(|x| x.is_zero()) {
         // fast path for multi-signatures coming from 100% raw XMSS (no recursion):
-        EF::from(bytecode.instructions_multilinear[0])
+        EF::from(bytecode.instructions_multilinear()[0])
     } else {
-        bytecode.instructions_multilinear.evaluate(point)
+        bytecode.instructions_multilinear().evaluate(point)
     }
 }
 
@@ -72,7 +72,7 @@ pub(crate) fn reduce_bytecode_claims(verified: &[InnerVerified]) -> ReducedBytec
     let claimed_sum: EF = dot_product(claims.iter().map(|c| c.value), alpha_powers.iter().copied());
 
     let (reduced_point, _, bytecode_folded, _) = run_product_sumcheck(
-        &MleRef::BasePacked(FPacking::<F>::pack_slice(&bytecode.instructions_multilinear)),
+        &MleRef::BasePacked(FPacking::<F>::pack_slice(bytecode.instructions_multilinear())),
         &MleRef::ExtensionPacked(&weights_packed),
         &mut reduction_prover,
         claimed_sum,

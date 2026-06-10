@@ -130,7 +130,7 @@ pub fn prove_execution(
         &logup_alphas_eq_poly,
         &memory,
         &memory_acc,
-        &bytecode.instructions_multilinear,
+        bytecode.instructions_multilinear(),
         &bytecode_acc,
         &traces,
     );
@@ -256,7 +256,7 @@ pub fn prove_execution(
         stacked_pcs_witness.stacked_n_vars,
         log2_strict_usize(memory.len()),
         bytecode.log_size(),
-        bytecode.ending_pc,
+        bytecode.ending_pc(),
         previous_statements,
         &tables_log_heights,
         &committed_statements,

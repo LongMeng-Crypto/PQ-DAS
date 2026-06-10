@@ -163,10 +163,10 @@ fn run_loop<M: MemoryAccess>(
     let mut parallel_batch: Option<ParallelBatchInfo> = None;
 
     loop {
-        if *pc == bytecode.ending_pc {
+        if *pc == bytecode.ending_pc() {
             return Ok(LoopExit::Halted);
         }
-        if *pc >= bytecode.code.len() {
+        if *pc >= bytecode.size() {
             return Err(RunnerError::PCOutOfBounds);
         }
         trace.pcs.push(*pc);
@@ -175,7 +175,7 @@ fn run_loop<M: MemoryAccess>(
             *diag.cpu_cycles_before_new_line += 1;
         }
 
-        let entry = &bytecode.code[*pc];
+        let entry = &bytecode.code()[*pc];
 
         for hint in entry.hints.iter() {
             if let Hint::ParallelBatchStart { n_args, end_value } = hint {
@@ -274,7 +274,7 @@ fn execute_bytecode_helper(
     instruction_history: &mut ExecutionHistory,
     profiling: bool,
 ) -> Result<ExecutionResult, (CodeAddress, RunnerError)> {
-    let n_slots = bytecode.hint_name_to_index.len();
+    let n_slots = bytecode.n_hint_slots();
     let hint_data = &witness.hints;
     let mut hint_indices = vec![0usize; n_slots];
 
@@ -282,7 +282,7 @@ fn execute_bytecode_helper(
     let mut memory = Memory::new(public_memory);
     let mut fp = PUBLIC_INPUT_LEN + witness.preamble_memory_len;
     fp = fp.next_multiple_of(DIMENSION);
-    let initial_ap = fp + bytecode.starting_frame_memory;
+    let initial_ap = fp + bytecode.starting_frame_memory();
     let mut pc = STARTING_PC;
     let mut ap = initial_ap;
     let mut trace = Trace::new();
@@ -334,7 +334,7 @@ fn execute_bytecode_helper(
     }
 
     resolve_deref_hints(&mut memory, &trace.pending_deref_hints).map_err(|e| (pc, e))?;
-    assert_eq!(pc, bytecode.ending_pc);
+    assert_eq!(pc, bytecode.ending_pc());
     for (slot, hint) in hint_data.0.iter().enumerate() {
         if hint_indices[slot] != hint.entries.len() {
             return Err((
@@ -355,7 +355,7 @@ fn execute_bytecode_helper(
     let profiling_report = if profiling {
         Some(crate::diagnostics::profiling_report(
             instruction_history,
-            &bytecode.function_locations,
+            &bytecode.debug_info().function_locations,
         ))
     } else {
         None
@@ -372,7 +372,7 @@ fn execute_bytecode_helper(
         memory: memory.0.len(),
         n_poseidons: trace.tables[&Table::poseidon16()].columns[0].len(),
         n_extension_ops: trace.tables[&Table::extension_op()].columns[0].len(),
-        bytecode_size: bytecode.code.len(),
+        bytecode_size: bytecode.size(),
         public_input_size: PUBLIC_INPUT_LEN,
         runtime_memory: runtime_memory_size,
         memory_usage_percent: used_memory_cells as f64 / memory.0.len() as f64 * 100.0,

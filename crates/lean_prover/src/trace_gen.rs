@@ -29,8 +29,8 @@ pub fn get_execution_trace(
     transposed_par_for_each_mut(&mut main_trace, |i, trace_row| {
         let pc = execution_result.pcs[i];
         let fp = execution_result.fps[i];
-        let instruction = &bytecode.code[pc].instruction;
-        let field_repr = &bytecode.instructions_multilinear[pc * N_INSTRUCTION_COLUMNS.next_power_of_two()..]
+        let instruction = &bytecode.code()[pc].instruction;
+        let field_repr = &bytecode.instructions_multilinear()[pc * N_INSTRUCTION_COLUMNS.next_power_of_two()..]
             [..N_INSTRUCTION_COLUMNS];
 
         let flag_a = field_repr[instr_idx(EXEC_COL_FLAG_A)];
@@ -162,7 +162,7 @@ pub fn get_execution_trace(
             &mut traces,
             padding_zero_vec_ptr,
             null_poseidon_16_hash_ptr,
-            bytecode.ending_pc,
+            bytecode.ending_pc(),
             floor,
         );
     }

@@ -301,7 +301,7 @@ fn dump_vector(
     let dir = out_dir.join(index.to_string());
     std::fs::create_dir_all(&dir).unwrap();
     let mle: Vec<u8> = bytecode
-        .instructions_multilinear
+        .instructions_multilinear()
         .iter()
         .flat_map(|&v| f(v).to_le_bytes())
         .collect();

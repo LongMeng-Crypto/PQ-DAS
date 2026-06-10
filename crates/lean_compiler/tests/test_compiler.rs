@@ -86,8 +86,8 @@ fn test_num_files() {
     let expected_num_files = 3; // program_2.py imports foo.py and bar.py
     let path = format!("{}/program_2.py", test_data_dir());
     let bytecode = compile_program(&ProgramSource::Filepath(path));
-    assert_eq!(bytecode.filepaths.len(), expected_num_files);
-    assert_eq!(bytecode.source_code.len(), expected_num_files);
+    assert_eq!(bytecode.debug_info().filepaths.len(), expected_num_files);
+    assert_eq!(bytecode.debug_info().source_code.len(), expected_num_files);
 }
 
 #[test]

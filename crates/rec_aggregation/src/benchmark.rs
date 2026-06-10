@@ -504,7 +504,7 @@ pub fn run_aggregation_benchmark(
     if !silent {
         println!(
             "Aggregation program: {} instructions\n",
-            pretty_integer(get_aggregation_bytecode().unpadded_size)
+            pretty_integer(get_aggregation_bytecode().unpadded_size())
         );
     }
 

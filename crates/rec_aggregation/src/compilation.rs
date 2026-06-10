@@ -87,8 +87,8 @@ fn compile_main_program_self_referential() -> Bytecode {
     for _ in 0..10 {
         let bytecode = compile_main_program(log_size_guess, bytecode_zero_eval);
         let actual_log_size = bytecode.log_size();
-        assert_eq!(bytecode.ending_pc, (1 << actual_log_size) - 1);
-        assert_eq!(bytecode_zero_eval, bytecode.instructions_multilinear[0]);
+        assert_eq!(bytecode.ending_pc(), (1 << actual_log_size) - 1);
+        assert_eq!(bytecode_zero_eval, bytecode.instructions_multilinear()[0]);
         if actual_log_size == log_size_guess {
             return bytecode;
         }

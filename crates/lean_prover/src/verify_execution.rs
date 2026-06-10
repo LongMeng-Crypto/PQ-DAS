@@ -82,7 +82,7 @@ pub fn verify_execution(
         &logup_alphas,
         &logup_alphas_eq_poly,
         log_memory,
-        &bytecode.instructions_multilinear,
+        bytecode.instructions_multilinear(),
         &table_n_vars,
     )?;
     let gkr_point = &logup_statements.gkr_point;
@@ -201,7 +201,7 @@ pub fn verify_execution(
         parsed_commitment.num_variables,
         log_memory,
         bytecode.log_size(),
-        bytecode.ending_pc,
+        bytecode.ending_pc(),
         previous_statements,
         &table_n_vars,
         &committed_statements,

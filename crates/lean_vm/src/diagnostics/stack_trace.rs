@@ -9,13 +9,13 @@ pub(crate) fn pretty_stack_trace(
     location_history: &[SourceLocation],
 ) -> String {
     let mut out = String::new();
-    let error_loc = bytecode.pc_to_location.get(error_pc).copied();
+    let error_loc = bytecode.debug_info().pc_to_location.get(error_pc).copied();
 
     out.push_str(&format!("{}\n\n", "ERROR".red().bold()));
 
     if let Some(loc) = error_loc {
         let path = filepath(bytecode, loc.file_id);
-        let (_, func) = find_function_for_location(loc, &bytecode.function_locations);
+        let (_, func) = find_function_for_location(loc, &bytecode.debug_info().function_locations);
 
         out.push_str(&format!(
             "  at {}:{} in {}\n\n",
@@ -25,7 +25,7 @@ pub(crate) fn pretty_stack_trace(
         ));
 
         // Source context
-        if let Some(source) = bytecode.source_code.get(&loc.file_id) {
+        if let Some(source) = bytecode.debug_info().source_code.get(&loc.file_id) {
             let lines: Vec<&str> = source.lines().collect();
             let err_line = loc.line_number.saturating_sub(1);
             let start = err_line.saturating_sub(3);
@@ -60,7 +60,7 @@ pub(crate) fn pretty_stack_trace(
     }
 
     // Call stack
-    let stack = build_call_stack(location_history, &bytecode.function_locations);
+    let stack = build_call_stack(location_history, &bytecode.debug_info().function_locations);
     if stack.len() > 1 {
         out.push_str(&format!("\n{}\n\n", "CALL STACK".yellow().bold()));
         for (i, (func, call_loc)) in stack.iter().rev().enumerate() {
@@ -119,6 +119,7 @@ pub(crate) fn find_function_for_location(
 
 fn filepath(bytecode: &Bytecode, file_id: usize) -> &str {
     bytecode
+        .debug_info()
         .filepaths
         .get(&file_id)
         .map(|s| s.as_str())
