@@ -231,6 +231,7 @@ pub enum XmssSignatureError {
     InvalidRandomness,
 }
 
+/// WARNING: XMSS is statefull signature, you should never sign with the same same `slot` twice.
 pub fn xmss_sign<R: CryptoRng>(
     rng: &mut R,
     secret_key: &XmssSecretKey,
@@ -238,15 +239,7 @@ pub fn xmss_sign<R: CryptoRng>(
     slot: u32,
 ) -> Result<XmssSignature, XmssSignatureError> {
     let (randomness, _, _) = find_randomness_for_wots_encoding(message, slot, &secret_key.public_key(), rng);
-    xmss_sign_with_randomness(secret_key, message, slot, randomness)
-}
 
-pub fn xmss_sign_with_randomness(
-    secret_key: &XmssSecretKey,
-    message: &[F; MESSAGE_LEN_FE],
-    slot: u32,
-    randomness: [F; RANDOMNESS_LEN_FE],
-) -> Result<XmssSignature, XmssSignatureError> {
     if slot < secret_key.slot_start || slot > secret_key.slot_end {
         return Err(XmssSignatureError::SlotOutOfRange);
     }
