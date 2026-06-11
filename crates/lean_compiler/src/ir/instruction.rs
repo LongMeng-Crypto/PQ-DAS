@@ -80,34 +80,19 @@ impl IntermediateInstruction {
         arg_b: IntermediateValue,
         res: IntermediateValue,
     ) -> Self {
-        match operation {
-            MathOperation::Add => Self::Computation {
-                operation: Operation::Add,
-                arg_a,
-                arg_b,
-                res,
-            },
-            MathOperation::Mul => Self::Computation {
-                operation: Operation::Mul,
-                arg_a,
-                arg_b,
-                res,
-            },
-            MathOperation::Sub => Self::Computation {
-                operation: Operation::Add,
-                arg_a: res,
-                arg_b,
-                res: arg_a,
-            },
-            MathOperation::Div => Self::Computation {
-                operation: Operation::Mul,
-                arg_a: res,
-                arg_b,
-                res: arg_a,
-            },
-            _ => {
-                unreachable!()
-            }
+        // Sub/Div are encoded via their inverse operation: `res = a - b` <=> `res + b = a`.
+        let (operation, arg_a, res) = match operation {
+            MathOperation::Add => (Operation::Add, arg_a, res),
+            MathOperation::Mul => (Operation::Mul, arg_a, res),
+            MathOperation::Sub => (Operation::Add, res, arg_a),
+            MathOperation::Div => (Operation::Mul, res, arg_a),
+            _ => unreachable!(),
+        };
+        Self::Computation {
+            operation,
+            arg_a,
+            arg_b,
+            res,
         }
     }
 

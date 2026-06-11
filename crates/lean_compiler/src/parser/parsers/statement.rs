@@ -85,31 +85,23 @@ impl Parse<Line> for IfStatementParser {
             }
         }
 
-        let mut outer_else_branch = Vec::new();
-        let mut inner_else_branch = &mut outer_else_branch;
-
-        for (elif_condition, elif_branch, line_number) in elif_branches.into_iter() {
-            inner_else_branch.push(Line::IfCondition {
+        // Fold elif clauses (innermost first) into a chain of nested `if`s.
+        for (elif_condition, elif_branch, line_number) in elif_branches.into_iter().rev() {
+            else_branch = vec![Line::IfCondition {
                 condition: elif_condition,
                 then_branch: elif_branch,
-                else_branch: Vec::new(),
+                else_branch,
                 location: SourceLocation {
                     file_id: ctx.current_file_id,
                     line_number,
                 },
-            });
-            inner_else_branch = match &mut inner_else_branch[0] {
-                Line::IfCondition { else_branch, .. } => else_branch,
-                _ => unreachable!("Expected Line::IfCondition"),
-            };
+            }];
         }
-
-        inner_else_branch.extend(else_branch);
 
         Ok(Line::IfCondition {
             condition,
             then_branch,
-            else_branch: outer_else_branch,
+            else_branch,
             location: SourceLocation {
                 file_id: ctx.current_file_id,
                 line_number,
