@@ -179,6 +179,7 @@ pub fn compile_to_low_level_bytecode(
         unpadded_size: n_real_instructions,
         code,
         instructions_multilinear,
+        read_only_data: Vec::new(),
         hash,
         starting_frame_memory,
         ending_pc,
