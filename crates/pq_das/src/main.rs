@@ -142,7 +142,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!("proof accepted: {accepted}");
     println!("bytecode instructions: {}", prepared.bytecode.size());
-    println!("read-only public elements: {}", prepared.bytecode.read_only_data.len());
+    println!(
+        "read-only public elements: {}",
+        prepared.bytecode.read_only_data().len()
+    );
     println!("sampling soundness target: {SAMPLING_SOUNDNESS_BITS} bits");
     println!(
         "sampling log2 failure bound: {:.3}",

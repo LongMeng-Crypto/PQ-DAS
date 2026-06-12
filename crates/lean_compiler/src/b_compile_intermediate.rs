@@ -74,20 +74,26 @@ impl Compiler {
 impl IntermediateValue {
     fn from_simple_expr(expr: &SimpleExpr, compiler: &Compiler) -> Self {
         match expr {
-            SimpleExpr::Memory(VarOrConstMallocAccess::Var(var)) => Self::MemoryAfterFp {
-                offset: compiler.get_offset(&var.clone().into()),
+            SimpleExpr::Memory(access) => Self::MemoryAfterFp {
+                offset: compiler.get_offset(access),
             },
-            SimpleExpr::Memory(VarOrConstMallocAccess::ConstMallocAccess { malloc_label, offset }) => {
-                Self::MemoryAfterFp {
-                    offset: compiler.get_offset(&VarOrConstMallocAccess::ConstMallocAccess {
-                        malloc_label: *malloc_label,
-                        offset: offset.clone(),
-                    }),
-                }
-            }
             SimpleExpr::Constant(c) => Self::Constant(c.clone()),
         }
     }
+}
+
+/// Matches `x + c`, `c + x`, or `x - c` where `x` is a plain variable and `c` a
+/// compile-time constant; returns the variable and the signed offset.
+fn as_var_plus_const<'a>(op: MathOperation, arg0: &'a SimpleExpr, arg1: &'a SimpleExpr) -> Option<(&'a Var, isize)> {
+    let (x, c, sign) = match (op, arg0, arg1) {
+        (MathOperation::Add, SimpleExpr::Memory(VarOrConstMallocAccess::Var(x)), SimpleExpr::Constant(c))
+        | (MathOperation::Add, SimpleExpr::Constant(c), SimpleExpr::Memory(VarOrConstMallocAccess::Var(x))) => {
+            (x, c, 1)
+        }
+        (MathOperation::Sub, SimpleExpr::Memory(VarOrConstMallocAccess::Var(x)), SimpleExpr::Constant(c)) => (x, c, -1),
+        _ => return None,
+    };
+    Some((x, sign * c.naive_eval()?.to_usize() as isize))
 }
 
 fn check_non_negative_fp_rel_sink(expr: &SimpleExpr, compiler: &Compiler) -> Result<(), String> {
@@ -223,38 +229,11 @@ fn compile_lines(
                 // then the result is also fp-relative (e.g. `ptr = arr + 8` or `ptr = arr - 1`)
                 let mut is_dead_derived = false;
                 if let Some(v) = var.as_var()
-                    && (*op == MathOperation::Add || *op == MathOperation::Sub)
+                    && let Some((x, delta)) = as_var_plus_const(*op, arg0, arg1)
+                    && let Some(&base) = compiler.const_malloc_vars.get(x)
                 {
-                    let fp_offset = match (op, arg0, arg1) {
-                        // Add: commutative, either order
-                        (
-                            MathOperation::Add,
-                            SimpleExpr::Memory(VarOrConstMallocAccess::Var(x)),
-                            SimpleExpr::Constant(c),
-                        )
-                        | (
-                            MathOperation::Add,
-                            SimpleExpr::Constant(c),
-                            SimpleExpr::Memory(VarOrConstMallocAccess::Var(x)),
-                        ) => compiler
-                            .const_malloc_vars
-                            .get(x)
-                            .and_then(|&base| c.naive_eval().map(|f| base + f.to_usize() as isize)),
-                        // Sub: only var - constant
-                        (
-                            MathOperation::Sub,
-                            SimpleExpr::Memory(VarOrConstMallocAccess::Var(x)),
-                            SimpleExpr::Constant(c),
-                        ) => compiler
-                            .const_malloc_vars
-                            .get(x)
-                            .and_then(|&base| c.naive_eval().map(|f| base - f.to_usize() as isize)),
-                        _ => None,
-                    };
-                    if let Some(offset) = fp_offset {
-                        compiler.const_malloc_vars.insert(v.clone(), offset);
-                        is_dead_derived = compiler.dead_fp_relative_vars.contains(v);
-                    }
+                    compiler.const_malloc_vars.insert(v.clone(), base + delta);
+                    is_dead_derived = compiler.dead_fp_relative_vars.contains(v);
                 }
 
                 if is_dead_derived {
@@ -998,26 +977,11 @@ fn collect_fp_rel_capable(
                 op,
                 arg0,
                 arg1,
-            } if *op == MathOperation::Add || *op == MathOperation::Sub => {
-                let base_var = match (op, arg0, arg1) {
-                    (
-                        MathOperation::Add,
-                        SimpleExpr::Memory(VarOrConstMallocAccess::Var(x)),
-                        SimpleExpr::Constant(c),
-                    )
-                    | (
-                        MathOperation::Add,
-                        SimpleExpr::Constant(c),
-                        SimpleExpr::Memory(VarOrConstMallocAccess::Var(x)),
-                    ) if fp_rel_capable.contains(x) && c.naive_eval().is_some() => Some(x.clone()),
-                    (
-                        MathOperation::Sub,
-                        SimpleExpr::Memory(VarOrConstMallocAccess::Var(x)),
-                        SimpleExpr::Constant(c),
-                    ) if fp_rel_capable.contains(x) && c.naive_eval().is_some() => Some(x.clone()),
-                    _ => None,
-                };
-                if let Some(base) = base_var {
+            } => {
+                if let Some((base, _)) = as_var_plus_const(*op, arg0, arg1)
+                    && fp_rel_capable.contains(base)
+                {
+                    let base = base.clone();
                     fp_rel_capable.insert(v.clone());
                     derived_base.insert(v.clone(), base);
                 }

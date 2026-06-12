@@ -82,7 +82,7 @@ pub fn verify_execution(
         &logup_alphas,
         &logup_alphas_eq_poly,
         log_memory,
-        &bytecode.instructions_multilinear,
+        bytecode.instructions_multilinear(),
         &table_n_vars,
     )?;
     let gkr_point = &logup_statements.gkr_point;
@@ -125,7 +125,7 @@ pub fn verify_execution(
         let alpha_slice = air_alpha_powers[alpha_offset..alpha_offset + n_constraints].to_vec();
         verify_data.push(TableVerifyData {
             table,
-            extra_data: ExtraDataForBuses::new(logup_alphas_eq_poly.clone(), alpha_slice),
+            extra_data: ExtraDataForBuses::new(&logup_alphas_eq_poly, alpha_slice),
         });
 
         alpha_offset += n_constraints;
@@ -203,7 +203,7 @@ pub fn verify_execution(
         parsed_commitment.num_variables,
         log_memory,
         bytecode.log_size(),
-        bytecode.ending_pc,
+        bytecode.ending_pc(),
         previous_statements,
         &table_n_vars,
         &committed_statements,

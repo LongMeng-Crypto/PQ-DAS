@@ -16,16 +16,6 @@ pub struct Program {
     pub filepaths: BTreeMap<FileId, String>,
 }
 
-impl Program {
-    pub fn inlined_function_names(&self) -> BTreeSet<FunctionName> {
-        self.functions
-            .iter()
-            .filter(|(_, func)| func.inlined)
-            .map(|(name, _)| name.clone())
-            .collect()
-    }
-}
-
 /// A function argument with its modifiers
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FunctionArg {
@@ -110,15 +100,7 @@ impl SimpleExpr {
     }
 
     pub fn try_vec_as_constant(vec: &[Self]) -> Option<Vec<ConstExpression>> {
-        let mut const_elems = Vec::new();
-        for expr in vec {
-            if let Self::Constant(cst) = expr {
-                const_elems.push(cst.clone());
-            } else {
-                return None;
-            }
-        }
-        Some(const_elems)
+        vec.iter().map(Self::as_constant).collect()
     }
 }
 
@@ -149,19 +131,11 @@ impl TryFrom<Expression> for ConstExpression {
     fn try_from(value: Expression) -> Result<Self, Self::Error> {
         match value {
             Expression::Value(SimpleExpr::Constant(const_expr)) => Ok(const_expr),
-            Expression::Value(_) => Err(()),
-            Expression::ArrayAccess { .. } => Err(()),
             Expression::MathExpr(math_expr, args) => {
-                let mut const_args = Vec::new();
-                for arg in args {
-                    const_args.push(Self::try_from(arg)?);
-                }
+                let const_args = args.into_iter().map(Self::try_from).collect::<Result<_, _>>()?;
                 Ok(Self::MathExpr(math_expr, const_args))
             }
-            Expression::FunctionCall { .. } => Err(()),
-            Expression::Len { .. } => Err(()),
-            Expression::Lambda { .. } => Err(()),
-            Expression::HintWitness { .. } => Err(()),
+            _ => Err(()),
         }
     }
 }
@@ -197,10 +171,7 @@ impl ConstExpression {
         match self {
             Self::Value(value) => func(value),
             Self::MathExpr(math_expr, args) => {
-                let mut eval_args = Vec::new();
-                for arg in args {
-                    eval_args.push(arg.eval_with(func)?);
-                }
+                let eval_args = args.iter().map(|arg| arg.eval_with(func)).collect::<Option<Vec<_>>>()?;
                 math_expr.eval(&eval_args)
             }
         }
@@ -396,10 +367,10 @@ impl Expression {
                     .collect::<Option<Vec<_>>>()?,
             ),
             Self::MathExpr(math_expr, args) => {
-                let mut eval_args = Vec::new();
-                for arg in args {
-                    eval_args.push(arg.eval_with(value_fn, array_fn)?);
-                }
+                let eval_args = args
+                    .iter()
+                    .map(|arg| arg.eval_with(value_fn, array_fn))
+                    .collect::<Option<Vec<_>>>()?;
                 math_expr.eval(&eval_args)
             }
             Self::FunctionCall { .. } => None,

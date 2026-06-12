@@ -4,6 +4,7 @@ use fiat_shamir::{ChallengeSampler, FSProver};
 use field::BasedVectorSpace;
 use field::Field;
 use field::PackedValue;
+use field::PrimeCharacteristicRing;
 use field::{ExtensionField, TwoAdicField};
 use poly::*;
 use std::any::{Any, TypeId};
@@ -11,9 +12,51 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 use tracing::instrument;
 use utils::log2_strict_usize;
+use zk_alloc::ArenaVec;
 
 use crate::EvalsDft;
 use crate::Matrix;
+
+#[inline]
+#[must_use]
+pub(crate) fn flatten_to_base_arena<F: PrimeCharacteristicRing, V: BasedVectorSpace<F>>(
+    vec: ArenaVec<V>,
+) -> ArenaVec<F> {
+    const {
+        assert!(align_of::<V>() == align_of::<F>());
+        assert!(size_of::<V>() == V::DIMENSION * size_of::<F>());
+    }
+    let (ptr, len, cap) = vec.into_raw_parts();
+    unsafe { ArenaVec::from_raw_parts(ptr.cast::<F>(), len * V::DIMENSION, cap * V::DIMENSION) }
+}
+
+#[inline]
+#[must_use]
+pub(crate) fn reconstitute_from_base_arena<F: PrimeCharacteristicRing, V: BasedVectorSpace<F> + Clone>(
+    vec: ArenaVec<F>,
+) -> ArenaVec<V> {
+    const {
+        assert!(align_of::<V>() == align_of::<F>());
+        assert!(size_of::<V>() == V::DIMENSION * size_of::<F>());
+    }
+    let d = V::DIMENSION;
+    assert!(
+        vec.len().is_multiple_of(d),
+        "ArenaVec length (got {}) must be a multiple of the extension field dimension ({}).",
+        vec.len(),
+        d
+    );
+    let new_len = vec.len() / d;
+    if vec.capacity().is_multiple_of(d) {
+        let (ptr, _len, cap) = vec.into_raw_parts();
+        unsafe { ArenaVec::from_raw_parts(ptr.cast::<V>(), new_len, cap / d) }
+    } else {
+        let slice_ref = unsafe { std::slice::from_raw_parts(vec.as_ptr().cast::<V>(), new_len) };
+        let mut out = ArenaVec::with_capacity(new_len);
+        out.extend_from_slice(slice_ref);
+        out
+    }
+}
 
 pub(crate) fn get_challenge_stir_queries<F: Field, Chal: ChallengeSampler<F>>(
     folded_domain_size: usize,
@@ -56,13 +99,13 @@ where
 }
 
 pub(crate) enum DftInput<EF: Field> {
-    Base(Vec<PF<EF>>),
-    Extension(Vec<EF>),
+    Base(ArenaVec<PF<EF>>),
+    Extension(ArenaVec<EF>),
 }
 
 pub(crate) enum DftOutput<EF: Field> {
-    Base(Matrix<PF<EF>>),
-    Extension(Matrix<EF>),
+    Base(Matrix<PF<EF>, ArenaVec<PF<EF>>>),
+    Extension(Matrix<EF, ArenaVec<EF>>),
 }
 
 pub(crate) fn reorder_and_dft<EF: ExtensionField<PF<EF>>>(
@@ -127,7 +170,7 @@ fn prepare_evals_for_fft_unpacked<A: Copy + Send + Sync>(
     folding_factor: usize,
     log_inv_rate: usize,
     dft_n_cols: usize,
-) -> Vec<A> {
+) -> ArenaVec<A> {
     assert!(evals.len().is_multiple_of(1 << folding_factor));
     let n_blocks = 1 << folding_factor;
     let full_len = evals.len() << log_inv_rate;
@@ -135,12 +178,12 @@ fn prepare_evals_for_fft_unpacked<A: Copy + Send + Sync>(
     let log_block_size = log2_strict_usize(block_size);
     let out_len = block_size * dft_n_cols;
 
-    let mut out: Vec<A> = unsafe { uninitialized_vec(out_len) };
+    let mut out: ArenaVec<A> = unsafe { ArenaVec::uninitialized(out_len) };
     if block_size == 0 || dft_n_cols == 0 {
         return out;
     }
 
-    let rows_per_band = ((system_info::L1_CACHE_SIZE / 2) / (dft_n_cols * size_of::<A>())).clamp(1, block_size);
+    let rows_per_band = ((system_info::l1_cache_size() / 2) / (dft_n_cols * size_of::<A>())).clamp(1, block_size);
     let band_len = rows_per_band * dft_n_cols;
 
     parallel::par_chunks_mut(&mut out, band_len, |band_idx, band| {
@@ -163,7 +206,7 @@ fn prepare_evals_for_fft_packed_extension<EF: ExtensionField<PF<EF>>>(
     evals: &[EFPacking<EF>],
     folding_factor: usize,
     log_inv_rate: usize,
-) -> Vec<EF> {
+) -> ArenaVec<EF> {
     let log_packing = packing_log_width::<EF>();
     assert!((evals.len() << log_packing).is_multiple_of(1 << folding_factor));
     let n_blocks = 1 << folding_factor;
@@ -172,12 +215,12 @@ fn prepare_evals_for_fft_packed_extension<EF: ExtensionField<PF<EF>>>(
     let log_block_size = log2_strict_usize(block_size);
     let packing_mask = (1 << log_packing) - 1;
 
-    let mut out: Vec<EF> = unsafe { uninitialized_vec(full_len) };
+    let mut out: ArenaVec<EF> = unsafe { ArenaVec::uninitialized(full_len) };
     if block_size == 0 || n_blocks == 0 {
         return out;
     }
 
-    let rows_per_band = ((system_info::L1_CACHE_SIZE / 2) / (n_blocks * size_of::<EF>())).clamp(1, block_size);
+    let rows_per_band = ((system_info::l1_cache_size() / 2) / (n_blocks * size_of::<EF>())).clamp(1, block_size);
     let band_len = rows_per_band * n_blocks;
 
     parallel::par_chunks_mut(&mut out, band_len, |band_idx, band| {

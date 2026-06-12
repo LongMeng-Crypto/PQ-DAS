@@ -192,10 +192,17 @@ impl Parse<AssignmentTarget> for AssignmentTargetParser {
             Rule::array_access_expr => {
                 let mut inner_pairs = first_pair.into_inner();
                 let array = next_inner_pair(&mut inner_pairs, "array name")?.as_str().to_string();
-                let index = ExpressionParser.parse(next_inner_pair(&mut inner_pairs, "array index")?, ctx)?;
+                let mut indices = inner_pairs
+                    .map(|idx_pair| ExpressionParser.parse(idx_pair, ctx))
+                    .collect::<ParseResult<Vec<_>>>()?;
+                if indices.len() != 1 {
+                    return Err(
+                        SemanticError::new(format!("Cannot assign to multidimensional target '{array}'")).into(),
+                    );
+                }
                 Ok(AssignmentTarget::ArrayAccess {
                     array: array.into(),
-                    index: Box::new(index),
+                    index: Box::new(indices.pop().unwrap()),
                 })
             }
             Rule::identifier => {
@@ -354,6 +361,11 @@ impl AssignmentParser {
                 let indices: Vec<Expression> = arr_inner
                     .map(|idx_pair| ExpressionParser.parse(idx_pair, ctx))
                     .collect::<ParseResult<Vec<_>>>()?;
+                if indices.len() != 1 {
+                    return Err(
+                        SemanticError::new(format!("Cannot assign to multidimensional target '{array}'")).into(),
+                    );
+                }
 
                 let array_expr: SimpleExpr = array.into();
                 let target = AssignmentTarget::ArrayAccess {
@@ -386,18 +398,12 @@ impl AssignmentParser {
         expr: Expression,
     ) -> ParseResult<Line> {
         match &expr {
-            Expression::FunctionCall {
-                function_name, args, ..
-            } => Self::handle_function_call(location, function_name.clone(), args.clone(), targets),
+            // Function calls (print, precompiles, custom hints) are resolved in a_simplify_lang.rs
+            Expression::FunctionCall { .. } => {}
             Expression::HintWitness { .. } => {
                 if !targets.is_empty() {
                     return Err(SemanticError::new("Cannot assign the result of a hint_witness to a variable").into());
                 }
-                Ok(Line::Statement {
-                    targets,
-                    value: expr,
-                    location,
-                })
             }
             _ => {
                 if targets.is_empty() {
@@ -409,31 +415,11 @@ impl AssignmentParser {
                     )
                     .into());
                 }
-                Ok(Line::Statement {
-                    targets,
-                    value: expr,
-                    location,
-                })
             }
         }
-    }
-}
-
-impl AssignmentParser {
-    fn handle_function_call(
-        location: SourceLocation,
-        function_name: String,
-        args: Vec<Expression>,
-        return_data: Vec<AssignmentTarget>,
-    ) -> ParseResult<Line> {
-        // Function calls (print, precompiles, custom hints) are handled in a_simplify_lang.rs
         Ok(Line::Statement {
-            targets: return_data,
-            value: Expression::FunctionCall {
-                function_name,
-                args,
-                location,
-            },
+            targets,
+            value: expr,
             location,
         })
     }

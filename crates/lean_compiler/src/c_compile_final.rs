@@ -1,4 +1,4 @@
-use crate::{F, instruction_encoder::field_representation, ir::*, lang::*};
+use crate::{F, ir::*, lang::*};
 use backend::*;
 use lean_vm::*;
 use std::collections::BTreeMap;
@@ -120,27 +120,24 @@ pub fn compile_to_low_level_bytecode(
     };
 
     let mut instructions = Vec::new();
+    let mut hint_name_to_index: BTreeMap<String, usize> = BTreeMap::new();
 
     for (pc_start, block) in code_blocks {
-        compile_block(&compiler, &block, pc_start, &mut instructions, &mut hints);
+        compile_block(
+            &compiler,
+            &block,
+            pc_start,
+            &mut instructions,
+            &mut hints,
+            &mut hint_name_to_index,
+        );
     }
 
-    debug_assert_eq!(instructions.len(), bytecode_size);
+    assert_eq!(instructions.len(), bytecode_size);
 
     for instruction in &instructions {
         validate_instruction(instruction)?;
     }
-
-    let instructions_encoded: Vec<[F; N_INSTRUCTION_COLUMNS]> =
-        parallel::par_map_collect(instructions.len(), |i| field_representation(&instructions[i]));
-
-    let mut instructions_multilinear = vec![];
-    for instr in &instructions_encoded {
-        instructions_multilinear.extend_from_slice(instr);
-        let padding = N_INSTRUCTION_COLUMNS.next_power_of_two() - N_INSTRUCTION_COLUMNS;
-        instructions_multilinear.extend(vec![F::ZERO; padding]);
-    }
-    instructions_multilinear.resize(instructions_multilinear.len().next_power_of_two(), F::ZERO);
 
     // Build pc_to_location mapping from LocationReport hints
     let mut pc_to_location = Vec::with_capacity(instructions.len());
@@ -159,8 +156,6 @@ pub fn compile_to_low_level_bytecode(
         pc_to_location.push(current_location);
     }
 
-    let hash = poseidon_hash_slice(&instructions_multilinear);
-
     let code: Vec<_> = instructions
         .into_iter()
         .enumerate()
@@ -175,19 +170,18 @@ pub fn compile_to_low_level_bytecode(
         return Err("Bytecode too large".to_string());
     }
 
-    Ok(Bytecode {
-        unpadded_size: n_real_instructions,
+    Ok(Bytecode::new(
         code,
-        instructions_multilinear,
-        read_only_data: Vec::new(),
-        hash,
+        n_real_instructions,
         starting_frame_memory,
-        ending_pc,
-        function_locations,
-        source_code,
-        filepaths,
-        pc_to_location,
-    })
+        hint_name_to_index,
+        BytecodeDebugInfo {
+            function_locations,
+            filepaths,
+            source_code,
+            pc_to_location,
+        },
+    ))
 }
 
 fn compile_block(
@@ -196,6 +190,7 @@ fn compile_block(
     pc_start: CodeAddress,
     low_level_bytecode: &mut Vec<Instruction>,
     hints: &mut BTreeMap<CodeAddress, Vec<Hint>>,
+    hint_names: &mut BTreeMap<String, usize>,
 ) {
     let try_as_mem_or_constant = |value: &IntermediateValue| {
         if let Some(cst) = try_as_constant(value, compiler) {
@@ -339,10 +334,12 @@ fn compile_block(
             }
             IntermediateInstruction::HintWitness { name, destination } => {
                 let destination = destination.map(|offset| eval_const_expression_usize(&offset, compiler));
+                let next_slot = hint_names.len();
+                let slot = *hint_names.entry(name).or_insert(next_slot);
                 hints
                     .entry(pc)
                     .or_default()
-                    .push(Hint::HintWitness { name, destination });
+                    .push(Hint::HintWitness { slot, destination });
             }
             IntermediateInstruction::Print { line_info, content } => {
                 let hint = Hint::Print {

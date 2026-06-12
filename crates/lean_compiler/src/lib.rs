@@ -11,7 +11,6 @@ use crate::{
 mod a_simplify_lang;
 mod b_compile_intermediate;
 mod c_compile_final;
-mod instruction_encoder;
 pub mod ir;
 mod lang;
 mod parser;
@@ -180,7 +179,6 @@ pub fn try_compile_and_run(
     let bytecode = try_compile_program(input)?;
     let witness = ExecutionWitness::default();
     let result = try_execute_bytecode(&bytecode, public_input, &witness, profiler)?;
-    println!("{}", result.metadata.display());
     Ok(result.metadata.display())
 }
 

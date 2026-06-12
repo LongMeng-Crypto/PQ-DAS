@@ -2,6 +2,7 @@ use crate::*;
 use ::utils::log2_strict_usize;
 use field::ExtensionField;
 use field::PackedValue;
+use zk_alloc::ArenaVec;
 
 #[derive(Debug)]
 pub enum MleRef<'a, EF: ExtensionField<PF<EF>>> {
@@ -106,10 +107,10 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleRef<'a, EF> {
 
     pub fn clone_to_owned(&self) -> MleOwned<EF> {
         match self {
-            Self::Base(v) => MleOwned::Base(v.to_vec()),
-            Self::Extension(v) => MleOwned::Extension(v.to_vec()),
-            Self::BasePacked(pb) => MleOwned::BasePacked(pb.to_vec()),
-            Self::ExtensionPacked(ep) => MleOwned::ExtensionPacked(ep.to_vec()),
+            Self::Base(v) => MleOwned::Base(ArenaVec::from_slice(v)),
+            Self::Extension(v) => MleOwned::Extension(ArenaVec::from_slice(v)),
+            Self::BasePacked(pb) => MleOwned::BasePacked(ArenaVec::from_slice(pb)),
+            Self::ExtensionPacked(ep) => MleOwned::ExtensionPacked(ArenaVec::from_slice(ep)),
         }
     }
 

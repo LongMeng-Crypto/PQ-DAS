@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::*;
+use backend::ArenaVec;
 use backend::ansi::Colorize;
 use lean_vm::*;
 use serde::{Deserialize, Serialize};
@@ -79,7 +80,7 @@ pub fn prove_execution(
     tracing::info!("Trace tables sizes: {}", table_log.magenta());
 
     // TODO parrallelize
-    let mut memory_acc = F::zero_vec(memory.len());
+    let mut memory_acc = unsafe { ArenaVec::<F>::zeroed(memory.len()) };
     info_span!("Building memory access count").in_scope(|| -> Result<(), ProverError> {
         for (table, trace) in &traces {
             let buses = table.bus_interactions();
@@ -99,7 +100,7 @@ pub fn prove_execution(
     })?;
 
     // // TODO parrallelize
-    let mut bytecode_acc = F::zero_vec(bytecode.padded_size());
+    let mut bytecode_acc = unsafe { ArenaVec::<F>::zeroed(bytecode.padded_size()) };
     info_span!("Building bytecode access count").in_scope(|| -> Result<(), ProverError> {
         for pc in traces[&Table::execution()].columns[EXEC_COL_PC].iter() {
             *bytecode_acc.get_mut(pc.to_usize()).ok_or(RunnerError::PCOutOfBounds)? += F::ONE;
@@ -129,7 +130,7 @@ pub fn prove_execution(
         &logup_alphas_eq_poly,
         &memory,
         &memory_acc,
-        &bytecode.instructions_multilinear,
+        bytecode.instructions_multilinear(),
         &bytecode_acc,
         &traces,
     );
@@ -158,12 +159,12 @@ pub fn prove_execution(
         .map(|table| {
             traces[table].columns[..table.n_columns()]
                 .iter()
-                .map(Vec::as_slice)
+                .map(|c| c.as_slice())
                 .collect()
         })
         .collect();
     let _span = info_span!("Computing shifted columns for AIR sumcheck").entered();
-    let shifted_rows: Vec<Vec<Vec<F>>> = ALL_TABLES
+    let shifted_rows: Vec<Vec<ArenaVec<F>>> = ALL_TABLES
         .iter()
         .zip(&column_refs)
         .map(|(table, cols)| compute_shifted_columns(table.n_shift_columns(), cols))
@@ -190,10 +191,10 @@ pub fn prove_execution(
         let eq_suffix = from_end(gkr_point, log_n_rows).to_vec();
 
         let alpha_slice = air_alpha_powers[alpha_offset..alpha_offset + n_constraints].to_vec();
-        let extra_data = ExtraDataForBuses::new(logup_alphas_eq_poly.clone(), alpha_slice);
+        let extra_data = ExtraDataForBuses::new(&logup_alphas_eq_poly, alpha_slice);
 
         let mut flat_and_shift: Vec<&[PF<EF>]> = column_refs[idx].to_vec();
-        flat_and_shift.extend(shifted_rows[idx].iter().map(Vec::as_slice));
+        flat_and_shift.extend(shifted_rows[idx].iter().map(|c| c.as_slice()));
         let packed = MleGroupRef::<EF>::Base(flat_and_shift).pack();
 
         let non_padded = traces[table].non_padded_n_rows;
@@ -256,7 +257,7 @@ pub fn prove_execution(
         stacked_pcs_witness.stacked_n_vars,
         log2_strict_usize(memory.len()),
         bytecode.log_size(),
-        bytecode.ending_pc,
+        bytecode.ending_pc(),
         previous_statements,
         &tables_log_heights,
         &committed_statements,

@@ -5,18 +5,18 @@ mod membership;
 mod protocol;
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     fmt::{Display, Formatter},
 };
 
-use backend::PrimeCharacteristicRing;
+use backend::{ArenaVec, PrimeCharacteristicRing, arena_vec};
 use lean_compiler::{CompilationFlags, ProgramSource, compile_program_with_flags};
 use lean_prover::{
     default_whir_config,
     prove_execution::{ExecutionProof, prove_execution},
     verify_execution::verify_execution,
 };
-use lean_vm::{Bytecode, ExecutionWitness, F};
+use lean_vm::{Bytecode, ExecutionWitness, F, Hints};
 
 pub use config::*;
 pub use encoding::{Blob, Codeword, Codewords, Data, ErasureDecoder, demo_data, encode, encode_blob};
@@ -180,12 +180,10 @@ pub fn prepare_statement(commitment: Commitment) -> Result<PreparedStatement, De
 }
 
 /// Packages only the private codeword matrix into the LeanVM witness.
-fn witness(codewords: &Codewords) -> ExecutionWitness {
-    let mut hints = HashMap::new();
-    hints.insert(
-        "codewords".to_string(),
-        vec![codewords.iter().flat_map(|row| row.iter().copied()).collect()],
-    );
+fn witness(bytecode: &Bytecode, codewords: &Codewords) -> ExecutionWitness {
+    let flattened: Vec<_> = codewords.iter().flat_map(|row| row.iter().copied()).collect();
+    let mut hints = Hints::default();
+    hints.insert(bytecode, "codewords", arena_vec![ArenaVec::from_slice(&flattened)]);
     ExecutionWitness {
         hints,
         ..Default::default()
@@ -201,7 +199,7 @@ pub fn prove_codewords(prepared: &PreparedStatement, codewords: &Codewords) -> R
     let execution = prove_execution(
         &prepared.bytecode,
         &leanvm_public_input(),
-        &witness(codewords),
+        &witness(&prepared.bytecode, codewords),
         &default_whir_config(profile.whir_log_inv_rate),
         false,
     )?;
@@ -338,8 +336,8 @@ mod tests {
             .map(|cell| hashing::column_hash(profile, &codewords, cell))
             .collect();
         commitment.root = hashing::merkle_root(&leaves);
-        let execution_witness = witness(&codewords);
         let prepared = prepare_statement(commitment).unwrap();
+        let execution_witness = witness(&prepared.bytecode, &codewords);
         assert!(
             lean_vm::try_execute_bytecode(&prepared.bytecode, &leanvm_public_input(), &execution_witness, false)
                 .is_err()

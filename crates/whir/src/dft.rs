@@ -27,7 +27,9 @@ use std::sync::RwLock;
 
 use field::PackedValue;
 use field::{BasedVectorSpace, Field, PackedField, TwoAdicField};
-use itertools::Itertools;
+use zk_alloc::ArenaVec;
+
+use crate::utils::{flatten_to_base_arena, reconstitute_from_base_arena};
 
 use tracing::instrument;
 use utils::{as_base_slice, log2_strict_usize};
@@ -75,7 +77,10 @@ impl<F> EvalsDft<F>
 where
     F: TwoAdicField,
 {
-    pub(crate) fn dft_batch_by_evals(&self, mut mat: Matrix<F>) -> Matrix<F> {
+    pub(crate) fn dft_batch_by_evals<V: AsRef<[F]> + AsMut<[F]> + Send + Sync>(
+        &self,
+        mut mat: Matrix<F, V>,
+    ) -> Matrix<F, V> {
         let h = mat.height();
         let w = mat.width();
         let log_h = log2_strict_usize(h);
@@ -100,7 +105,7 @@ where
         // We also divide by the height of the matrix while the data is nicely partitioned
         // on each core.
         par_initial_layers(
-            &mut mat.values,
+            mat.values.as_mut(),
             chunk_size,
             &root_table[root_table.len() - log_num_par_rows..],
             w,
@@ -123,12 +128,10 @@ where
 
         // We do `LAYERS_PER_GROUP` layers of the DFT at once, to minimize how much data we need to transfer
         // between threads.
-        for (twiddles_small, twiddles_med, twiddles_large) in root_table[..root_table.len() - log_num_par_rows - corr]
-            .iter()
-            .rev()
-            .map(|slice| unsafe { as_base_slice::<EvalsButterfly<F>, F>(slice) })
-            .tuples()
-        {
+        for chunk in root_table[..root_table.len() - log_num_par_rows - corr].rchunks_exact(LAYERS_PER_GROUP) {
+            let twiddles_small = unsafe { as_base_slice::<EvalsButterfly<F>, F>(&chunk[2]) };
+            let twiddles_med = unsafe { as_base_slice::<EvalsButterfly<F>, F>(&chunk[1]) };
+            let twiddles_large = unsafe { as_base_slice::<EvalsButterfly<F>, F>(&chunk[0]) };
             dft_layer_par_triple(
                 &mut mat.as_view_mut(),
                 twiddles_small,
@@ -145,12 +148,12 @@ where
     #[instrument(skip_all)]
     pub(crate) fn dft_algebra_batch_by_evals<V: BasedVectorSpace<F> + Clone + Send + Sync>(
         &self,
-        mat: Matrix<V>,
-    ) -> Matrix<V> {
+        mat: Matrix<V, ArenaVec<V>>,
+    ) -> Matrix<V, ArenaVec<V>> {
         let init_width = mat.width();
-        let base_mat = Matrix::new(V::flatten_to_base(mat.values), init_width * V::DIMENSION);
+        let base_mat = Matrix::new(flatten_to_base_arena::<F, V>(mat.values), init_width * V::DIMENSION);
         let base_dft_output = self.dft_batch_by_evals(base_mat);
-        Matrix::new(V::reconstitute_from_base(base_dft_output.values), init_width)
+        Matrix::new(reconstitute_from_base_arena::<F, V>(base_dft_output.values), init_width)
     }
 }
 
@@ -416,8 +419,8 @@ fn fft_triple_layer_quad_twiddle<F: Field, Fly: Butterfly<F>>(
 
 /// Estimates the optimal workload size for `T` to fit in L1 cache.
 #[must_use]
-const fn workload_size<T: Sized>() -> usize {
-    system_info::L1_CACHE_SIZE / size_of::<T>()
+fn workload_size<T: Sized>() -> usize {
+    system_info::l1_cache_size() / size_of::<T>()
 }
 
 /// Estimates the optimal number of rows of a `RowMajorMatrix<T>` to take in each parallel chunk.
@@ -543,8 +546,8 @@ impl<F: Field> Butterfly<F> for EvalsButterfly<F> {
 mod tests {
     use field::{PrimeCharacteristicRing, TwoAdicField};
     use koala_bear::{KoalaBear, QuinticExtensionFieldKB};
-    use poly::*;
     use rand::{RngExt, SeedableRng, rngs::StdRng};
+    use zk_alloc::ArenaVec;
 
     use crate::*;
 
@@ -560,7 +563,7 @@ mod tests {
             let evals = (0..(1 << n_vars)).map(|_| rng.random()).collect::<Vec<EF>>();
 
             let dft = EvalsDft::<F>::default();
-            let evals_dft = dft.dft_algebra_batch_by_evals(Matrix::new(evals.clone(), 1));
+            let evals_dft = dft.dft_algebra_batch_by_evals(Matrix::new(ArenaVec::from_slice(&evals), 1));
             let fft_values = evals_dft.values;
             for _ in 0..10 {
                 let i = rng.random_range(0..(1 << n_vars));
