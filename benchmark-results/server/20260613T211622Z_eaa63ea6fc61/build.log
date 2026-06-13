@@ -1,0 +1,3 @@
+   Compiling lean_prover v0.1.0 (/root/benchmarks/PQ-DAS/crates/lean_prover)
+   Compiling pq_das v0.1.0 (/root/benchmarks/PQ-DAS/crates/pq_das)
+    Finished `release` profile [optimized] target(s) in 30.67s

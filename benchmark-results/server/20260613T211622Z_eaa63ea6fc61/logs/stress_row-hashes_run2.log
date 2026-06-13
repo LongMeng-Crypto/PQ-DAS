@@ -1,0 +1,55 @@
+PQ-DAS LeanVM demo
+proved relation: row-hashes
+benchmark-only reduced relation: true
+profile: stress (n=32, m=4096, k=2048, rho=2048/4096, c=8, cells=512, threshold=256)
+root: [433114104, 920779216, 1614328468, 1740774455, 1880676580, 1990363046, 873835566, 1291017403]
+proof accepted: true
+bytecode instructions: 256
+read-only public elements: 256
+sampling soundness target: 124 bits
+sampling log2 failure bound: -125.310
+opened cells: 105
+commitment size: 1056 bytes
+proof size: 81734 field elements (326936 bytes)
+sample size: 138180 bytes
+reconstruction: skipped
+encoding + commitment time: 0.047s
+prover preprocessing time: 0.003s
+LeanVM proving time: 2.497s
+verifier statement rebuild + LeanVM proof verification time: 0.039s
+opening verification time: 0.007s
+VM cycles: 1467730
+VM memory elements: 1583250
+VM public memory elements: 512
+VM runtime memory elements: 1582738
+VM memory usage: 99.967%
+VM Poseidon16 calls: 8192
+VM extension-op calls: 0
+
+╔═════════════════════════════════════════════════════════════════════════╗
+║                              PROFILING REPORT                           ║
+╚═════════════════════════════════════════════════════════════════════════╝
+
+──────────────────────────────────────────────────────────────────────────
+      │      Exclusive      │      Inclusive      │                       
+Calls │  Cycles  ┊ Avg/Call │  Cycles  ┊ Avg/Call │ Function Name         
+──────────────────────────────────────────────────────────────────────────
+   32 │  155,456 ┊    4,858 │  155,456 ┊    4,858 │ hash_chunks
+    1 │ 1,312,272 ┊ 1,312,272 │ 1,467,728 ┊ 1,467,728 │ main
+──────────────────────────────────────────────────────────────────────────
+
+LeanVM table execution: actual_rows=1467730, padded_rows=2097152
+LeanVM table extension_op: actual_rows=0, padded_rows=256
+LeanVM table poseidon16: actual_rows=8192, padded_rows=16384
+LeanVM prover stage bytecode execution: 0.081288s
+LeanVM prover stage trace generation: 0.077293s
+LeanVM prover stage prover setup: 0.000015s
+LeanVM prover stage memory access count: 0.015260s
+LeanVM prover stage bytecode access count: 0.004072s
+LeanVM prover stage stack and commit: 0.586575s
+LeanVM prover stage logup: 0.655616s
+LeanVM prover stage AIR preparation: 0.021249s
+LeanVM prover stage AIR sumcheck: 0.161288s
+LeanVM prover stage statement finalization: 0.000193s
+LeanVM prover stage WHIR excluding grinding: 0.847245s
+LeanVM prover stage grinding: 0.028686s
