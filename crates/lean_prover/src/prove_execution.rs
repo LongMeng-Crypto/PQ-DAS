@@ -1,4 +1,7 @@
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    time::{Duration, Instant},
+};
 
 use crate::*;
 use backend::ArenaVec;
@@ -14,6 +17,37 @@ pub struct ExecutionProof {
     // benchmark / debug purpose
     #[serde(skip, default)]
     pub metadata: Option<ExecutionMetadata>,
+    #[serde(skip, default)]
+    pub prover_profile: Option<ProverProfile>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TableProfile {
+    pub name: &'static str,
+    pub actual_rows: usize,
+    pub padded_rows: usize,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ProverStageTimings {
+    pub bytecode_execution: Duration,
+    pub trace_generation: Duration,
+    pub prover_setup: Duration,
+    pub memory_access_count: Duration,
+    pub bytecode_access_count: Duration,
+    pub stack_and_commit: Duration,
+    pub logup: Duration,
+    pub air_preparation: Duration,
+    pub air_sumcheck: Duration,
+    pub statement_finalization: Duration,
+    pub whir: Duration,
+    pub grinding: Duration,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProverProfile {
+    pub tables: Vec<TableProfile>,
+    pub timings: ProverStageTimings,
 }
 
 pub fn prove_execution(
@@ -24,16 +58,33 @@ pub fn prove_execution(
     vm_profiler: bool,
 ) -> Result<ExecutionProof, ProverError> {
     check_rate(whir_config.starting_log_inv_rate).map_err(|_| ProverError::InvalidRate)?;
+    reset_pow_grinding_time();
+    let mut timings = ProverStageTimings::default();
     let ExecutionTrace {
         traces,
         mut memory, // padded with zeros to next power of two
         metadata,
     } = info_span!("Witness generation").in_scope(|| -> Result<_, ProverError> {
+        let started = Instant::now();
         let execution_result = info_span!("Executing bytecode")
             .in_scope(|| try_execute_bytecode(bytecode, public_input, witness, vm_profiler))?;
-        Ok(info_span!("Building execution trace")
-            .in_scope(|| get_execution_trace(bytecode, execution_result, &witness.min_table_log_n_rows)))
+        timings.bytecode_execution = started.elapsed();
+
+        let started = Instant::now();
+        let trace = info_span!("Building execution trace")
+            .in_scope(|| get_execution_trace(bytecode, execution_result, &witness.min_table_log_n_rows));
+        timings.trace_generation = started.elapsed();
+        Ok(trace)
     })?;
+    let table_profiles = traces
+        .iter()
+        .map(|(table, trace)| TableProfile {
+            name: table.name(),
+            actual_rows: trace.non_padded_n_rows,
+            padded_rows: 1 << trace.log_n_rows,
+        })
+        .collect();
+    let started = Instant::now();
 
     // Memory must be at least MIN_LOG_MEMORY_SIZE and at least bytecode size
     // (required by the stacked polynomial ordering)
@@ -78,9 +129,11 @@ pub fn prove_execution(
     }
     table_log = table_log.trim_end_matches(" | ").to_string();
     tracing::info!("Trace tables sizes: {}", table_log.magenta());
+    timings.prover_setup = started.elapsed();
 
     // TODO parrallelize
     let mut memory_acc = unsafe { ArenaVec::<F>::zeroed(memory.len()) };
+    let started = Instant::now();
     info_span!("Building memory access count").in_scope(|| -> Result<(), ProverError> {
         for (table, trace) in &traces {
             let buses = table.bus_interactions();
@@ -98,17 +151,21 @@ pub fn prove_execution(
         }
         Ok(())
     })?;
+    timings.memory_access_count = started.elapsed();
 
     // // TODO parrallelize
     let mut bytecode_acc = unsafe { ArenaVec::<F>::zeroed(bytecode.padded_size()) };
+    let started = Instant::now();
     info_span!("Building bytecode access count").in_scope(|| -> Result<(), ProverError> {
         for pc in traces[&Table::execution()].columns[EXEC_COL_PC].iter() {
             *bytecode_acc.get_mut(pc.to_usize()).ok_or(RunnerError::PCOutOfBounds)? += F::ONE;
         }
         Ok(())
     })?;
+    timings.bytecode_access_count = started.elapsed();
 
     // 1st Commitment
+    let started = Instant::now();
     let stacked_pcs_witness = stack_polynomials_and_commit(
         &mut prover_state,
         whir_config,
@@ -117,8 +174,10 @@ pub fn prove_execution(
         &bytecode_acc,
         &traces,
     );
+    timings.stack_and_commit = started.elapsed();
 
     // logup (GKR)
+    let started = Instant::now();
     let logup_c = prover_state.sample();
     prover_state.duplex();
     let logup_alphas = prover_state.sample_vec(LOG_MAX_BUS_WIDTH);
@@ -134,6 +193,8 @@ pub fn prove_execution(
         &bytecode_acc,
         &traces,
     );
+    timings.logup = started.elapsed();
+    let started = Instant::now();
     let gkr_point = &logup_statements.gkr_point;
     let mut committed_statements: CommittedStatements = Default::default();
     for table in ALL_TABLES {
@@ -208,10 +269,14 @@ pub fn prove_execution(
         sessions.push(delegate_to_inner!(table => make_session));
         alpha_offset += n_constraints;
     }
+    timings.air_preparation = started.elapsed();
 
+    let started = Instant::now();
     let sumcheck_air_point =
         info_span!("batched AIR sumcheck").in_scope(|| prove_batched_air_sumcheck(&mut prover_state, &mut sessions));
+    timings.air_sumcheck = started.elapsed();
 
+    let started = Instant::now();
     for (idx, table) in ALL_TABLES.iter().enumerate() {
         let col_evals = sessions[idx].final_column_evals();
         prover_state.add_extension_scalars(&col_evals);
@@ -262,19 +327,28 @@ pub fn prove_execution(
         &tables_log_heights,
         &committed_statements,
     );
+    timings.statement_finalization = started.elapsed();
 
+    let started = Instant::now();
     WhirConfig::new(whir_config, stacked_pcs_witness.global_polynomial.by_ref().n_vars()).prove(
         &mut prover_state,
         global_statements_base,
         stacked_pcs_witness.inner_witness,
         &stacked_pcs_witness.global_polynomial.by_ref(),
     );
+    let whir_total = started.elapsed();
+    timings.grinding = pow_grinding_time();
+    timings.whir = whir_total.saturating_sub(timings.grinding);
 
-    tracing::info!("total pow_grinding time: {} ms", pow_grinding_time().as_millis());
+    tracing::info!("total pow_grinding time: {} ms", timings.grinding.as_millis());
     reset_pow_grinding_time();
 
     Ok(ExecutionProof {
         proof: prover_state.into_proof(),
         metadata: Some(metadata),
+        prover_profile: Some(ProverProfile {
+            tables: table_profiles,
+            timings,
+        }),
     })
 }

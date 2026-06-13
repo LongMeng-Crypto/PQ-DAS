@@ -2,10 +2,10 @@
 
 ## A. Profiling and Cost Breakdown
 
-- [ ] **A1. Add detailed LeanVM prover profiling:** report actual and padded rows for every LeanVM table.
-- [ ] **A2. Add stage-level prover timing:** separately measure bytecode execution, trace generation, memory access counting, logup, AIR sumcheck, WHIR, and grinding.
-- [ ] **A3. Enable LeanVM VM profiling and tracing:** expose instruction, memory, Poseidon, and extension-operation statistics.
-- [ ] **A4. Add relation-isolation benchmarks:** benchmark row hashing, column hashing plus Merkle construction, and RS membership independently.
+- [x] **A1. Add detailed LeanVM prover profiling:** report actual and padded rows for every LeanVM table.
+- [x] **A2. Add stage-level prover timing:** separately measure bytecode execution, trace generation, memory access counting, logup, AIR sumcheck, WHIR, and grinding.
+- [x] **A3. Enable LeanVM VM profiling and tracing:** expose instruction, memory, Poseidon, and extension-operation statistics.
+- [x] **A4. Add relation-isolation benchmarks:** benchmark row hashing, column hashing plus Merkle construction, and RS membership independently.
 
 ## B. LeanVM Proof Optimization
 

@@ -36,6 +36,7 @@ pub struct Commitment {
 #[derive(Debug, Clone)]
 pub struct ProofBundle {
     pub execution: ExecutionProof,
+    relation: ProvedRelation,
 }
 
 #[derive(Debug, Clone)]
@@ -46,6 +47,26 @@ pub struct PreparedStatement {
     pub check_vector: membership::CheckVector,
     /// Compact profile bytecode with the statement values bound read-only.
     pub bytecode: Bytecode,
+    relation: ProvedRelation,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProvedRelation {
+    All,
+    RowHashes,
+    ColumnMerkle,
+    RsMembership,
+}
+
+impl ProvedRelation {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::RowHashes => "row-hashes",
+            Self::ColumnMerkle => "column-merkle",
+            Self::RsMembership => "rs-membership",
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -53,6 +74,7 @@ pub enum DemoError {
     InvalidDataShape,
     InvalidQuery,
     InvalidOpening,
+    ReducedRelationProof,
     InsufficientCells,
     ReconstructionFailed,
     ChallengeOnDomain,
@@ -68,6 +90,7 @@ impl Display for DemoError {
             Self::InvalidDataShape => write!(f, "data dimensions do not match the selected profile"),
             Self::InvalidQuery => write!(f, "query contains an invalid or duplicate cell index"),
             Self::InvalidOpening => write!(f, "invalid cell opening"),
+            Self::ReducedRelationProof => write!(f, "benchmark-only reduced relation proof is not a full PQ-DAS proof"),
             Self::InsufficientCells => write!(f, "not enough distinct cells to reconstruct"),
             Self::ReconstructionFailed => write!(f, "RS reconstruction failed"),
             Self::ChallengeOnDomain => write!(f, "Fiat-Shamir challenge lies on the interpolation domain"),
@@ -100,13 +123,24 @@ fn guest_source() -> ProgramSource {
 }
 
 /// Creates profile-specific zkDSL replacements and read-only memory pointers.
-fn compilation_flags(commitment: &Commitment) -> Result<CompilationFlags, DemoError> {
+fn compilation_flags(commitment: &Commitment, relation: ProvedRelation) -> Result<CompilationFlags, DemoError> {
     commitment.profile.validate()?;
     if commitment.row_hashes.len() != commitment.profile.n {
         return Err(DemoError::InvalidDataShape);
     }
     let profile = commitment.profile;
     let mut replacements = BTreeMap::new();
+    let read_only_start = DIGEST_LEN;
+    let (row_hashes_ptr, root_ptr, check_vector_ptr) = match relation {
+        ProvedRelation::All => (
+            read_only_start,
+            read_only_start + profile.n * DIGEST_LEN,
+            read_only_start + (profile.n + 1) * DIGEST_LEN,
+        ),
+        ProvedRelation::RowHashes => (read_only_start, read_only_start, read_only_start),
+        ProvedRelation::ColumnMerkle => (read_only_start, read_only_start, read_only_start),
+        ProvedRelation::RsMembership => (read_only_start, read_only_start, read_only_start),
+    };
     for (name, value) in [
         ("N_PLACEHOLDER", profile.n),
         ("M_PLACEHOLDER", profile.m),
@@ -118,9 +152,21 @@ fn compilation_flags(commitment: &Commitment) -> Result<CompilationFlags, DemoEr
         ("COLUMN_CHUNKS_PLACEHOLDER", profile.n * profile.c / DIGEST_LEN),
         ("MERKLE_DEPTH_PLACEHOLDER", profile.merkle_depth()),
         ("TREE_DIGESTS_PLACEHOLDER", 2 * profile.n_cells() - 1),
-        ("PUBLIC_ROW_HASHES_PTR_PLACEHOLDER", DIGEST_LEN),
-        ("PUBLIC_ROOT_PTR_PLACEHOLDER", DIGEST_LEN + profile.n * DIGEST_LEN),
-        ("CHECK_VECTOR_PTR_PLACEHOLDER", 2 * DIGEST_LEN + profile.n * DIGEST_LEN),
+        ("PUBLIC_ROW_HASHES_PTR_PLACEHOLDER", row_hashes_ptr),
+        ("PUBLIC_ROOT_PTR_PLACEHOLDER", root_ptr),
+        ("CHECK_VECTOR_PTR_PLACEHOLDER", check_vector_ptr),
+        (
+            "ENABLE_ROW_HASHES_PLACEHOLDER",
+            usize::from(matches!(relation, ProvedRelation::All | ProvedRelation::RowHashes)),
+        ),
+        (
+            "ENABLE_COLUMN_MERKLE_PLACEHOLDER",
+            usize::from(matches!(relation, ProvedRelation::All | ProvedRelation::ColumnMerkle)),
+        ),
+        (
+            "ENABLE_RS_MEMBERSHIP_PLACEHOLDER",
+            usize::from(matches!(relation, ProvedRelation::All | ProvedRelation::RsMembership)),
+        ),
     ] {
         replacements.insert(name.to_string(), value.to_string());
     }
@@ -158,24 +204,48 @@ fn leanvm_public_input() -> [F; DIGEST_LEN] {
 }
 
 /// Flattens public hashes, root, and L into LeanVM's bound read-only segment.
-fn read_only_data(commitment: &Commitment, check_vector: &membership::CheckVector) -> Vec<F> {
-    let mut data =
-        Vec::with_capacity(commitment.profile.n * DIGEST_LEN + DIGEST_LEN + commitment.profile.m * EXT_DEGREE);
-    data.extend(commitment.row_hashes.iter().flatten().copied());
-    data.extend_from_slice(&commitment.root);
-    data.extend(check_vector.iter().flatten().copied());
+fn read_only_data(commitment: &Commitment, check_vector: &membership::CheckVector, relation: ProvedRelation) -> Vec<F> {
+    let mut data = Vec::new();
+    if matches!(relation, ProvedRelation::All | ProvedRelation::RowHashes) {
+        data.extend(commitment.row_hashes.iter().flatten().copied());
+    }
+    if matches!(relation, ProvedRelation::All | ProvedRelation::ColumnMerkle) {
+        data.extend_from_slice(&commitment.root);
+    }
+    if matches!(relation, ProvedRelation::All | ProvedRelation::RsMembership) {
+        data.extend(check_vector.iter().flatten().copied());
+    }
     data
 }
 
 /// Generates L once and compiles the reusable statement-bound LeanVM bytecode.
 pub fn prepare_statement(commitment: Commitment) -> Result<PreparedStatement, DemoError> {
+    prepare_statement_for_relation(commitment, ProvedRelation::All)
+}
+
+/// Builds a reduced statement for relation-isolation benchmarks only.
+pub fn prepare_relation_benchmark(
+    commitment: Commitment,
+    relation: ProvedRelation,
+) -> Result<PreparedStatement, DemoError> {
+    if relation == ProvedRelation::All {
+        return prepare_statement(commitment);
+    }
+    prepare_statement_for_relation(commitment, relation)
+}
+
+fn prepare_statement_for_relation(
+    commitment: Commitment,
+    relation: ProvedRelation,
+) -> Result<PreparedStatement, DemoError> {
     let check_vector = membership::check_vector(&commitment).ok_or(DemoError::ChallengeOnDomain)?;
-    let bytecode = compile_program_with_flags(&guest_source(), compilation_flags(&commitment)?)
-        .with_read_only_data(read_only_data(&commitment, &check_vector));
+    let bytecode = compile_program_with_flags(&guest_source(), compilation_flags(&commitment, relation)?)
+        .with_read_only_data(read_only_data(&commitment, &check_vector, relation));
     Ok(PreparedStatement {
         commitment,
         check_vector,
         bytecode,
+        relation,
     })
 }
 
@@ -192,6 +262,15 @@ fn witness(bytecode: &Bytecode, codewords: &Codewords) -> ExecutionWitness {
 
 /// Proves the prepared row-hash, Merkle-root, and RS dot-product statement.
 pub fn prove_codewords(prepared: &PreparedStatement, codewords: &Codewords) -> Result<ProofBundle, DemoError> {
+    prove_codewords_with_profiling(prepared, codewords, false)
+}
+
+/// Proves codewords and optionally enables the detailed LeanVM function profiler.
+pub fn prove_codewords_with_profiling(
+    prepared: &PreparedStatement,
+    codewords: &Codewords,
+    detailed_profiling: bool,
+) -> Result<ProofBundle, DemoError> {
     let profile = prepared.commitment.profile;
     if codewords.len() != profile.n || codewords.iter().any(|row| row.len() != profile.m) {
         return Err(DemoError::InvalidDataShape);
@@ -201,16 +280,37 @@ pub fn prove_codewords(prepared: &PreparedStatement, codewords: &Codewords) -> R
         &leanvm_public_input(),
         &witness(&prepared.bytecode, codewords),
         &default_whir_config(profile.whir_log_inv_rate),
-        false,
+        detailed_profiling,
     )?;
-    Ok(ProofBundle { execution })
+    Ok(ProofBundle {
+        execution,
+        relation: prepared.relation,
+    })
 }
 
 /// Recomputes Fiat-Shamir and L from the public commitment before verifying.
 pub fn verify_execution_proof(commitment: &Commitment, proof: &ProofBundle) -> Result<(), DemoError> {
+    if proof.relation != ProvedRelation::All {
+        return Err(DemoError::ReducedRelationProof);
+    }
     // The verifier never accepts L from the prover. Re-preparing the statement
     // independently binds the proof to the unique L derived from public data.
     let prepared = prepare_statement(commitment.clone())?;
+    verify_execution(
+        &prepared.bytecode,
+        &leanvm_public_input(),
+        proof.execution.proof.clone(),
+    )
+    .map(|_| ())
+    .map_err(DemoError::Verification)
+}
+
+/// Verifies a reduced relation proof produced only for cost-isolation benchmarks.
+pub fn verify_relation_benchmark(commitment: &Commitment, proof: &ProofBundle) -> Result<(), DemoError> {
+    if proof.relation == ProvedRelation::All {
+        return verify_execution_proof(commitment, proof);
+    }
+    let prepared = prepare_statement_for_relation(commitment.clone(), proof.relation)?;
     verify_execution(
         &prepared.bytecode,
         &leanvm_public_input(),

@@ -249,3 +249,45 @@ Override the WHIR inverse-rate exponent:
 cargo run --release -p pq_das -- \
   --profile medium --whir-log-inv-rate 2
 ```
+
+## Detailed Prover Profiling
+
+Enable function-level VM profiling together with structured LeanVM table and
+prover-stage statistics:
+
+```bash
+cargo run --release -p pq_das -- \
+  --profile stress \
+  --detailed-profiling
+```
+
+The output reports:
+
+- actual and power-of-two padded rows for every LeanVM table;
+- VM cycles, memory, Poseidon calls, and extension-operation calls;
+- bytecode execution, trace generation, access-count construction, stacked
+  commitment, logup, AIR preparation and sumcheck, statement finalization,
+  WHIR, and grinding times.
+
+Benchmark one relation independently:
+
+```bash
+target/release/pq_das --profile stress --relation row-hashes --detailed-profiling --skip-reconstruction
+target/release/pq_das --profile stress --relation column-merkle --detailed-profiling --skip-reconstruction
+target/release/pq_das --profile stress --relation rs-membership --detailed-profiling --skip-reconstruction
+```
+
+Reduced relation proofs are benchmark-only artifacts. The production
+`verify_execution_proof()` entry point rejects them and continues to require
+row hashes, the column Merkle root, and RS membership in one proof.
+
+Run the complete server profiling suite and generate Markdown and CSV tables:
+
+```bash
+RUSTFLAGS="-C target-cpu=native" RUNS=1 \
+  ./scripts/benchmark-pq-das-profiling.sh
+```
+
+Results are written under `benchmark-results/server/<timestamp>_<commit>/`.
+Each result directory contains raw logs, machine information, `results.csv`,
+and `SUMMARY.md`. Set `RUNS=3` when repeated measurements are desired.

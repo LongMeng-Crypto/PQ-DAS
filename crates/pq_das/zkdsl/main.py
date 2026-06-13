@@ -18,6 +18,9 @@ LEVEL_OFFSETS = LEVEL_OFFSETS_PLACEHOLDER
 PUBLIC_ROW_HASHES_PTR = PUBLIC_ROW_HASHES_PTR_PLACEHOLDER
 PUBLIC_ROOT_PTR = PUBLIC_ROOT_PTR_PLACEHOLDER
 CHECK_VECTOR_PTR = CHECK_VECTOR_PTR_PLACEHOLDER
+ENABLE_ROW_HASHES = ENABLE_ROW_HASHES_PLACEHOLDER
+ENABLE_COLUMN_MERKLE = ENABLE_COLUMN_MERKLE_PLACEHOLDER
+ENABLE_RS_MEMBERSHIP = ENABLE_RS_MEMBERSHIP_PLACEHOLDER
 
 
 @inline
@@ -63,40 +66,43 @@ def main():
     public_root = PUBLIC_ROOT_PTR
     check_vector = CHECK_VECTOR_PTR
 
-    for row in range(0, N):
-        systematic = Array(K)
-        for i in range(0, K):
-            systematic[i] = codewords[row * M + i * SYSTEMATIC_STRIDE]
-        digest = hash_chunks(systematic, ROW_CHUNKS)
-        for i in unroll(0, DIGEST_LEN):
-            assert digest[i] == public_row_hashes[row * DIGEST_LEN + i]
-
-    tree = Array(TREE_DIGESTS * DIGEST_LEN)
-    for cell in range(0, N_CELLS):
-        column_data = Array(N * C)
+    if ENABLE_ROW_HASHES == 1:
         for row in range(0, N):
-            for offset in range(0, C):
-                column_data[row * C + offset] = codewords[row * M + cell * C + offset]
-        digest = hash_chunks(column_data, COLUMN_CHUNKS)
+            systematic = Array(K)
+            for i in range(0, K):
+                systematic[i] = codewords[row * M + i * SYSTEMATIC_STRIDE]
+            digest = hash_chunks(systematic, ROW_CHUNKS)
+            for i in unroll(0, DIGEST_LEN):
+                assert digest[i] == public_row_hashes[row * DIGEST_LEN + i]
+
+    if ENABLE_COLUMN_MERKLE == 1:
+        tree = Array(TREE_DIGESTS * DIGEST_LEN)
+        for cell in range(0, N_CELLS):
+            column_data = Array(N * C)
+            for row in range(0, N):
+                for offset in range(0, C):
+                    column_data[row * C + offset] = codewords[row * M + cell * C + offset]
+            digest = hash_chunks(column_data, COLUMN_CHUNKS)
+            for i in unroll(0, DIGEST_LEN):
+                tree[cell * DIGEST_LEN + i] = digest[i]
+
+        for level in unroll(0, MERKLE_DEPTH):
+            input_offset = LEVEL_OFFSETS[level]
+            output_offset = LEVEL_OFFSETS[level + 1]
+            for node in range(0, LEVEL_SIZES[level + 1]):
+                poseidon16_compress_half(
+                    tree + (input_offset + 2 * node) * DIGEST_LEN,
+                    tree + (input_offset + 2 * node + 1) * DIGEST_LEN,
+                    tree + (output_offset + node) * DIGEST_LEN,
+                )
+
+        root_offset = LEVEL_OFFSETS[MERKLE_DEPTH] * DIGEST_LEN
         for i in unroll(0, DIGEST_LEN):
-            tree[cell * DIGEST_LEN + i] = digest[i]
+            assert tree[root_offset + i] == public_root[i]
 
-    for level in unroll(0, MERKLE_DEPTH):
-        input_offset = LEVEL_OFFSETS[level]
-        output_offset = LEVEL_OFFSETS[level + 1]
-        for node in range(0, LEVEL_SIZES[level + 1]):
-            poseidon16_compress_half(
-                tree + (input_offset + 2 * node) * DIGEST_LEN,
-                tree + (input_offset + 2 * node + 1) * DIGEST_LEN,
-                tree + (output_offset + node) * DIGEST_LEN,
-            )
-
-    root_offset = LEVEL_OFFSETS[MERKLE_DEPTH] * DIGEST_LEN
-    for i in unroll(0, DIGEST_LEN):
-        assert tree[root_offset + i] == public_root[i]
-
-    for row in range(0, N):
-        result = Array(DIM)
-        dot_product_be(codewords + row * M, check_vector, result, M)
-        assert_ext_zero(result)
+    if ENABLE_RS_MEMBERSHIP == 1:
+        for row in range(0, N):
+            result = Array(DIM)
+            dot_product_be(codewords + row * M, check_vector, result, M)
+            assert_ext_zero(result)
     return

@@ -4,9 +4,10 @@ use backend::{PrimeCharacteristicRing, PrimeField32};
 use clap::{Parser, ValueEnum};
 use lean_vm::F;
 use pq_das::{
-    DIGEST_LEN, ParameterProfile, SAMPLING_SOUNDNESS_BITS, commitment_size_bytes, demo_data, encode_and_commit,
-    prepare_statement, prove_codewords, query, reconstruct, sample_query_indices, transcript_size_bytes,
-    verify_execution_proof, verify_openings,
+    DIGEST_LEN, ParameterProfile, ProvedRelation, SAMPLING_SOUNDNESS_BITS, commitment_size_bytes, demo_data,
+    encode_and_commit, prepare_relation_benchmark, prepare_statement, prove_codewords_with_profiling, query,
+    reconstruct, sample_query_indices, transcript_size_bytes, verify_execution_proof, verify_openings,
+    verify_relation_benchmark,
 };
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -22,6 +23,28 @@ enum ProfileName {
     #[value(name = "blob-128k-16")]
     Blob128K16,
     Custom,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum RelationName {
+    All,
+    #[value(name = "row-hashes")]
+    RowHashes,
+    #[value(name = "column-merkle")]
+    ColumnMerkle,
+    #[value(name = "rs-membership")]
+    RsMembership,
+}
+
+impl From<RelationName> for ProvedRelation {
+    fn from(value: RelationName) -> Self {
+        match value {
+            RelationName::All => Self::All,
+            RelationName::RowHashes => Self::RowHashes,
+            RelationName::ColumnMerkle => Self::ColumnMerkle,
+            RelationName::RsMembership => Self::RsMembership,
+        }
+    }
 }
 
 #[derive(Debug, Parser)]
@@ -47,6 +70,14 @@ struct Cli {
 
     #[arg(long)]
     skip_reconstruction: bool,
+
+    /// Enable LeanVM's function-level VM profiler.
+    #[arg(long)]
+    detailed_profiling: bool,
+
+    /// Benchmark one proved relation in isolation; non-all modes are not production proofs.
+    #[arg(long, value_enum, default_value_t = RelationName::All)]
+    relation: RelationName,
 }
 
 impl Cli {
@@ -86,11 +117,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let commitment_time = started.elapsed();
 
     let started = Instant::now();
-    let prepared = prepare_statement(commitment)?;
+    let relation = ProvedRelation::from(cli.relation);
+    let prepared = if relation == ProvedRelation::All {
+        prepare_statement(commitment)?
+    } else {
+        prepare_relation_benchmark(commitment, relation)?
+    };
     let preprocessing_time = started.elapsed();
 
     let started = Instant::now();
-    let proof = prove_codewords(&prepared, &aux.codewords)?;
+    let proof = prove_codewords_with_profiling(&prepared, &aux.codewords, cli.detailed_profiling)?;
     let proving_time = started.elapsed();
 
     let sample_count = profile.sampling_count(SAMPLING_SOUNDNESS_BITS);
@@ -98,7 +134,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let transcript = query(&aux, &indices)?;
 
     let started = Instant::now();
-    verify_execution_proof(&prepared.commitment, &proof)?;
+    if relation == ProvedRelation::All {
+        verify_execution_proof(&prepared.commitment, &proof)?;
+    } else {
+        verify_relation_benchmark(&prepared.commitment, &proof)?;
+    }
     let proof_verification_time = started.elapsed();
 
     let started = Instant::now();
@@ -124,6 +164,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let sample_bytes = transcript_size_bytes(&transcript);
 
     println!("PQ-DAS LeanVM demo");
+    println!("proved relation: {}", relation.name());
+    if relation != ProvedRelation::All {
+        println!("benchmark-only reduced relation: true");
+    }
     println!(
         "profile: {} (n={}, m={}, k={}, rho={}/{}, c={}, cells={}, threshold={})",
         profile.name,
@@ -173,5 +217,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "opening verification time: {:.3}s",
         opening_verification_time.as_secs_f64()
     );
+    if let Some(metadata) = &proof.execution.metadata {
+        println!("VM cycles: {}", metadata.cycles);
+        println!("VM memory elements: {}", metadata.memory);
+        println!("VM public memory elements: {}", metadata.public_memory_size);
+        println!("VM runtime memory elements: {}", metadata.runtime_memory);
+        println!("VM memory usage: {:.3}%", metadata.memory_usage_percent);
+        println!("VM Poseidon16 calls: {}", metadata.n_poseidons);
+        println!("VM extension-op calls: {}", metadata.n_extension_ops);
+        if cli.detailed_profiling
+            && let Some(report) = &metadata.profiling_report
+        {
+            println!("{report}");
+        }
+    }
+    if let Some(profile) = &proof.execution.prover_profile {
+        for table in &profile.tables {
+            println!(
+                "LeanVM table {}: actual_rows={}, padded_rows={}",
+                table.name, table.actual_rows, table.padded_rows
+            );
+        }
+        let timings = &profile.timings;
+        for (name, elapsed) in [
+            ("bytecode execution", timings.bytecode_execution),
+            ("trace generation", timings.trace_generation),
+            ("prover setup", timings.prover_setup),
+            ("memory access count", timings.memory_access_count),
+            ("bytecode access count", timings.bytecode_access_count),
+            ("stack and commit", timings.stack_and_commit),
+            ("logup", timings.logup),
+            ("AIR preparation", timings.air_preparation),
+            ("AIR sumcheck", timings.air_sumcheck),
+            ("statement finalization", timings.statement_finalization),
+            ("WHIR excluding grinding", timings.whir),
+            ("grinding", timings.grinding),
+        ] {
+            println!("LeanVM prover stage {name}: {:.6}s", elapsed.as_secs_f64());
+        }
+    }
     Ok(())
 }
