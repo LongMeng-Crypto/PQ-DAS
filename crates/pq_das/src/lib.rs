@@ -382,16 +382,16 @@ mod tests {
     }
 
     #[test]
-    /// Pins the minimum distinct-cell counts that match LeanVM's availability-soundness target.
+    /// Pins the minimum per-transcript cell counts for the formal DAS sampler-quality bound.
     fn predefined_profiles_have_expected_sampling_counts() {
         for (profile, expected) in [
             (ParameterProfile::TINY, 1),
-            (ParameterProfile::MEDIUM, 16),
-            (ParameterProfile::LARGE, 63),
-            (ParameterProfile::STRESS, 105),
-            (ParameterProfile::BLOB_128K_1, 114),
-            (ParameterProfile::BLOB_128K_4, 114),
-            (ParameterProfile::BLOB_128K_16, 114),
+            (ParameterProfile::MEDIUM, 2),
+            (ParameterProfile::LARGE, 2),
+            (ParameterProfile::STRESS, 5),
+            (ParameterProfile::BLOB_128K_1, 9),
+            (ParameterProfile::BLOB_128K_4, 9),
+            (ParameterProfile::BLOB_128K_16, 9),
         ] {
             let count = profile.sampling_count(SAMPLING_SOUNDNESS_BITS);
             assert_eq!(count, expected);

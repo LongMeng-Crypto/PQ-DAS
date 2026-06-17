@@ -6,10 +6,17 @@ const _: () = assert!(usize::BITS == 64, "this project requires a 64-bit target 
 pub fn num_threads() -> usize {
     static CACHE: OnceLock<usize> = OnceLock::new();
     *CACHE.get_or_init(|| {
+        if let Some(n) = env_thread_count("PQ_DAS_NUM_THREADS").or_else(|| env_thread_count("RAYON_NUM_THREADS")) {
+            return n;
+        }
         std::thread::available_parallelism()
             .expect("failed to detect available parallelism")
             .get()
     })
+}
+
+fn env_thread_count(name: &str) -> Option<usize> {
+    std::env::var(name).ok()?.parse::<usize>().ok().filter(|&n| n > 0)
 }
 
 #[must_use]

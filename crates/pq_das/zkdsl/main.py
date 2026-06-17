@@ -67,7 +67,7 @@ def main():
     check_vector = CHECK_VECTOR_PTR
 
     if ENABLE_ROW_HASHES == 1:
-        for row in range(0, N):
+        for row in parallel_range(0, N):
             systematic = Array(K)
             for i in range(0, K):
                 systematic[i] = codewords[row * M + i * SYSTEMATIC_STRIDE]
@@ -77,7 +77,7 @@ def main():
 
     if ENABLE_COLUMN_MERKLE == 1:
         tree = Array(TREE_DIGESTS * DIGEST_LEN)
-        for cell in range(0, N_CELLS):
+        for cell in parallel_range(0, N_CELLS):
             column_data = Array(N * C)
             for row in range(0, N):
                 for offset in range(0, C):
@@ -101,7 +101,7 @@ def main():
             assert tree[root_offset + i] == public_root[i]
 
     if ENABLE_RS_MEMBERSHIP == 1:
-        for row in range(0, N):
+        for row in parallel_range(0, N):
             result = Array(DIM)
             dot_product_be(codewords + row * M, check_vector, result, M)
             assert_ext_zero(result)

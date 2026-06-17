@@ -7,6 +7,8 @@ pub const DIGEST_LEN: usize = 8;
 pub const EXT_DEGREE: usize = 5;
 /// Matches LeanVM's current default WHIR security target.
 pub const SAMPLING_SOUNDNESS_BITS: usize = lean_prover::SECURITY_BITS;
+/// Number of independent accepting transcripts assumed by the DAS sampler-quality benchmark.
+pub const SAMPLING_TRANSCRIPTS: usize = 128;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ParameterProfile {
@@ -118,38 +120,31 @@ impl ParameterProfile {
         self.k.div_ceil(self.c)
     }
 
-    /// Returns the minimum number of distinct samples needed for the requested availability soundness.
+    /// Returns the minimum per-transcript cell count for the formal DAS sampler-quality bound.
     pub fn sampling_count(self, soundness_bits: usize) -> usize {
         let n_cells = self.n_cells();
-        let max_available_without_reconstruction = self.reconstruction_threshold_cells() - 1;
-        let mut log2_failure = 0.0;
-
+        let delta = self.reconstruction_threshold_cells() - 1;
         for sample_count in 1..=n_cells {
-            if sample_count > max_available_without_reconstruction {
+            if self.sampling_log2_failure(sample_count) <= -(soundness_bits as f64) {
                 return sample_count;
             }
-            let offset = sample_count - 1;
-            log2_failure +=
-                ((max_available_without_reconstruction - offset) as f64).log2() - ((n_cells - offset) as f64).log2();
-            if log2_failure <= -(soundness_bits as f64) {
+            if sample_count > delta {
                 return sample_count;
             }
         }
         n_cells
     }
 
-    /// Returns the log2 false-accept probability for distinct sampling in the worst unreconstructable case.
+    /// Returns log2 nu_wor(delta, N, Q, T) for distinct sampling without replacement.
     pub fn sampling_log2_failure(self, sample_count: usize) -> f64 {
         let n_cells = self.n_cells();
-        let max_available_without_reconstruction = self.reconstruction_threshold_cells() - 1;
-        if sample_count > max_available_without_reconstruction {
+        let delta = self.reconstruction_threshold_cells() - 1;
+        if sample_count > delta {
             return f64::NEG_INFINITY;
         }
-        (0..sample_count)
-            .map(|offset| {
-                ((max_available_without_reconstruction - offset) as f64).log2() - ((n_cells - offset) as f64).log2()
-            })
-            .sum()
+        log2_binomial(n_cells, delta)
+            + (SAMPLING_TRANSCRIPTS as f64)
+                * (log2_binomial(delta, sample_count) - log2_binomial(n_cells, sample_count))
     }
 
     /// Returns the spacing between systematic subgroup evaluations.
@@ -208,6 +203,14 @@ impl ParameterProfile {
             F::from_usize(self.whir_log_inv_rate),
         ]
     }
+}
+
+fn log2_binomial(n: usize, k: usize) -> f64 {
+    if k > n {
+        return f64::NEG_INFINITY;
+    }
+    let k = k.min(n - k);
+    (0..k).map(|i| ((n - i) as f64).log2() - ((i + 1) as f64).log2()).sum()
 }
 
 /// Encodes the RS Fiat-Shamir domain separator into one Poseidon-rate block.

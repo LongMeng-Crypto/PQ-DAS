@@ -200,13 +200,10 @@ Size columns use $1\,\mathrm{KB}=1024$ bytes. The benchmark columns measure the 
 - LeanVM has a read-only public-data segment for row hashes, ${\sf root}$, and $L$. It is immutable, included in the bytecode hash, and constrained by the public-memory polynomial.
 - Public constants are no longer expanded into hundreds of thousands of VM assignment instructions.
 - Within each party, $L$ is computed once and reused instead of being regenerated per row. The verifier's copy is independently derived rather than received from the prover.
-- Availability sampling derives distinct Poseidon-based indices and computes the minimum count for a $124$-bit worst-case hypergeometric bound matching LeanVM instead of opening the reconstruction threshold by default.
 - Montgomery batch inversion reduces $L$ generation from $2k$ extension-field inversions to one inversion plus linear-many multiplications.
 - Poseidon sponge absorption uses runtime loops, keeping bytecode size nearly constant as $k$ and $m$ grow.
 - RS encoding uses radix-2 IFFT/FFT rather than quadratic Lagrange evaluation.
-- Arbitrary-cell reconstruction replaces quadratic barycentric interpolation with a shared FFT subproduct-tree erasure locator, Newton exact division, and FFT recovery. Locator preparation is reused across every row.
 - RS membership inside LeanVM uses the optimized `dot_product_be` extension-field precompile.
-- Benchmark timing is separated into encoding/commitment, prover preprocessing, proving, verifier statement reconstruction plus proof verification, and opening verification. Commitment, proof, and sample sizes are reported separately.
 
 ## Running Commands
 
@@ -249,45 +246,3 @@ Override the WHIR inverse-rate exponent:
 cargo run --release -p pq_das -- \
   --profile medium --whir-log-inv-rate 2
 ```
-
-## Detailed Prover Profiling
-
-Enable function-level VM profiling together with structured LeanVM table and
-prover-stage statistics:
-
-```bash
-cargo run --release -p pq_das -- \
-  --profile stress \
-  --detailed-profiling
-```
-
-The output reports:
-
-- actual and power-of-two padded rows for every LeanVM table;
-- VM cycles, memory, Poseidon calls, and extension-operation calls;
-- bytecode execution, trace generation, access-count construction, stacked
-  commitment, logup, AIR preparation and sumcheck, statement finalization,
-  WHIR, and grinding times.
-
-Benchmark one relation independently:
-
-```bash
-target/release/pq_das --profile stress --relation row-hashes --detailed-profiling --skip-reconstruction
-target/release/pq_das --profile stress --relation column-merkle --detailed-profiling --skip-reconstruction
-target/release/pq_das --profile stress --relation rs-membership --detailed-profiling --skip-reconstruction
-```
-
-Reduced relation proofs are benchmark-only artifacts. The production
-`verify_execution_proof()` entry point rejects them and continues to require
-row hashes, the column Merkle root, and RS membership in one proof.
-
-Run the complete server profiling suite and generate Markdown and CSV tables:
-
-```bash
-RUSTFLAGS="-C target-cpu=native" RUNS=1 \
-  ./scripts/benchmark-pq-das-profiling.sh
-```
-
-Results are written under `benchmark-results/server/<timestamp>_<commit>/`.
-Each result directory contains raw logs, machine information, `results.csv`,
-and `SUMMARY.md`. Set `RUNS=3` when repeated measurements are desired.
