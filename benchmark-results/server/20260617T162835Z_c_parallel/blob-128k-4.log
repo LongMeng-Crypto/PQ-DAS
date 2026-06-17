@@ -1,0 +1,43 @@
+PQ-DAS LeanVM demo
+proved relation: all
+profile: blob-128k-4 (n=4, m=65536, k=32768, rho=32768/65536, c=64, cells=1024, threshold=512)
+root: [1120030255, 1533448271, 1528234940, 369037618, 2098245150, 184954272, 1016547548, 1434728928]
+proof accepted: true
+bytecode instructions: 1024
+read-only public elements: 327720
+sampling soundness target: 124 bits
+sampling transcripts assumed: 128
+sampling log2 failure bound: -143.150
+opened cells: 9
+commitment size: 160 bytes
+proof size: 96519 field elements (386076 bytes)
+sample size: 12132 bytes
+reconstruction correct: true
+reconstruction time: 0.112s
+encoding + commitment time: 0.096s
+prover preprocessing time: 0.084s
+LeanVM proving time: 19.218s
+verifier statement rebuild + LeanVM proof verification time: 0.125s
+opening verification time: 0.001s
+VM cycles: 10029486
+VM memory elements: 10798899
+VM public memory elements: 524288
+VM runtime memory elements: 10274611
+VM memory usage: 99.171%
+VM Poseidon16 calls: 50175
+VM extension-op calls: 262144
+LeanVM table execution: actual_rows=10029486, padded_rows=16777216
+LeanVM table extension_op: actual_rows=262144, padded_rows=524288
+LeanVM table poseidon16: actual_rows=50175, padded_rows=65536
+LeanVM prover stage bytecode execution: 0.501244s
+LeanVM prover stage trace generation: 0.595383s
+LeanVM prover stage prover setup: 0.000015s
+LeanVM prover stage memory access count: 0.327924s
+LeanVM prover stage bytecode access count: 0.104895s
+LeanVM prover stage stack and commit: 5.197969s
+LeanVM prover stage logup: 3.912477s
+LeanVM prover stage AIR preparation: 0.143205s
+LeanVM prover stage AIR sumcheck: 1.430735s
+LeanVM prover stage statement finalization: 0.000677s
+LeanVM prover stage WHIR excluding grinding: 6.765401s
+LeanVM prover stage grinding: 0.030723s
