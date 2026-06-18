@@ -41,14 +41,21 @@ def hash_chunks(data, num_chunks: Const):
     full = Array(2 * DIGEST_LEN)
     if num_chunks == 1:
         poseidon16_permute(iv, data, full)
+    elif num_chunks == 2:
+        state = Array(DIGEST_LEN)
+        poseidon16_permute_half(iv, data, state)
+        poseidon16_permute(state, data + DIGEST_LEN, full)
     else:
         states = Array((num_chunks - 1) * DIGEST_LEN)
         poseidon16_permute_half(iv, data, states)
         for chunk in range(1, num_chunks - 1):
+            previous_state_offset = (chunk - 1) * DIGEST_LEN
+            next_state_offset = chunk * DIGEST_LEN
+            data_offset = chunk * DIGEST_LEN
             poseidon16_permute_half(
-                states + (chunk - 1) * DIGEST_LEN,
-                data + chunk * DIGEST_LEN,
-                states + chunk * DIGEST_LEN,
+                states + previous_state_offset,
+                data + data_offset,
+                states + next_state_offset,
             )
         poseidon16_permute(
             states + (num_chunks - 2) * DIGEST_LEN,
@@ -68,32 +75,41 @@ def main():
 
     if ENABLE_ROW_HASHES == 1:
         for row in range(0, N):
+            row_base = row * M
             systematic = Array(K)
             for i in range(0, K):
-                systematic[i] = codewords[row * M + i * SYSTEMATIC_STRIDE]
+                systematic[i] = codewords[row_base + i * SYSTEMATIC_STRIDE]
             digest = hash_chunks(systematic, ROW_CHUNKS)
+            public_row_hash_base = row * DIGEST_LEN
             for i in unroll(0, DIGEST_LEN):
-                assert digest[i] == public_row_hashes[row * DIGEST_LEN + i]
+                assert digest[i] == public_row_hashes[public_row_hash_base + i]
 
     if ENABLE_COLUMN_MERKLE == 1:
         tree = Array(TREE_DIGESTS * DIGEST_LEN)
         for cell in range(0, N_CELLS):
+            cell_base = cell * C
             column_data = Array(N * C)
             for row in range(0, N):
+                row_base = row * M
+                column_base = row * C
                 for offset in range(0, C):
-                    column_data[row * C + offset] = codewords[row * M + cell * C + offset]
+                    column_data[column_base + offset] = codewords[row_base + cell_base + offset]
             digest = hash_chunks(column_data, COLUMN_CHUNKS)
+            tree_leaf_base = cell * DIGEST_LEN
             for i in unroll(0, DIGEST_LEN):
-                tree[cell * DIGEST_LEN + i] = digest[i]
+                tree[tree_leaf_base + i] = digest[i]
 
         for level in unroll(0, MERKLE_DEPTH):
             input_offset = LEVEL_OFFSETS[level]
             output_offset = LEVEL_OFFSETS[level + 1]
             for node in range(0, LEVEL_SIZES[level + 1]):
+                left_child = input_offset + 2 * node
+                right_child = left_child + 1
+                parent = output_offset + node
                 poseidon16_compress_half(
-                    tree + (input_offset + 2 * node) * DIGEST_LEN,
-                    tree + (input_offset + 2 * node + 1) * DIGEST_LEN,
-                    tree + (output_offset + node) * DIGEST_LEN,
+                    tree + left_child * DIGEST_LEN,
+                    tree + right_child * DIGEST_LEN,
+                    tree + parent * DIGEST_LEN,
                 )
 
         root_offset = LEVEL_OFFSETS[MERKLE_DEPTH] * DIGEST_LEN

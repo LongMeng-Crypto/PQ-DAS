@@ -128,44 +128,56 @@ The following results were measured on the ax42u server with
 
 - **Summary:** Execution-table padding wastes 34-40% of rows, so an optimization must cross a power-of-two boundary to produce the largest proving-time reduction.
 
-### C-Parallel Optimization Attempt
+### Sampling Correction + C8/C9/C10 Retained Result
 
-The following results were measured on the ax42u server after trying C1, C2, C4, C5, C6, C7, C8, C9, and C10. This run uses the corrected DAS sampling rule with $T=128$, so opened cells and sample sizes are not directly comparable to the original fixed-withholding-set sampling rule. The C1/C2/C4/C5/C6/C7 code changes were later reverted because they did not improve total proving time; only the sampling correction and C8/C9/C10 environment support are retained.
+The following results were measured on the ax42u server after reverting C1/C2/C4/C5/C6/C7 and retaining only the formal DAS sampling correction plus C8/C9/C10 environment support. This is the clean post-revert benchmark state.
 
-#### End-to-End Runtime Table
+#### Current Benchmark Table
 
-| Profile | Encode + commit | Prover preprocess | LeanVM prove | Verifier rebuild + LeanVM verify | Verify openings |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| `tiny` | 0.000 | 0.006 | 0.033 | 0.027 | 0.000 |
-| `medium` | 0.001 | 0.005 | 0.167 | 0.035 | 0.000 |
-| `large` | 0.006 | 0.010 | 1.119 | 0.043 | 0.000 |
-| `stress` | 0.046 | 0.014 | 9.403 | 0.053 | 0.000 |
-| `blob-128k-1` | 0.026 | 0.084 | 4.666 | 0.122 | 0.000 |
-| `blob-128k-4` | 0.096 | 0.084 | 19.218 | 0.125 | 0.001 |
+| Profile | Bytecode instructions | Read-only elements | Opened cells | $\log_2\nu_{\mathrm{wor}}$ | Commitment size | Proof size | Sample size | Encode + commit | Prover preprocess | LeanVM prove | Verifier rebuild + LeanVM verify | Verify openings | Reconstruct | Result |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `tiny` | 512 | 104 | 1 | $-\infty$ | 96 B | 178,596 B | 100 B | 0.000s | 0.006s | 0.030s | 0.027s | 0.000s | 0.000s | Correct |
+| `medium` | 512 | 1,352 | 2 | -257.638 | 288 B | 251,152 B | 840 B | 0.001s | 0.005s | 0.169s | 0.034s | 0.000s | 0.001s | Correct |
+| `large` | 1,024 | 5,256 | 2 | -139.174 | 544 B | 299,444 B | 1,480 B | 0.006s | 0.010s | 1.112s | 0.043s | 0.000s | 0.004s | Correct |
+| `stress` | 1,024 | 20,744 | 5 | -140.113 | 1,056 B | 367,208 B | 6,580 B | 0.047s | 0.014s | 9.327s | 0.056s | 0.000s | 0.029s | Correct |
+| `blob-128k-1` | 1,024 | 327,696 | 9 | -143.150 | 64 B | 348,108 B | 5,220 B | 0.026s | 0.083s | 4.589s | 0.125s | 0.000s | 0.070s | Correct |
+| `blob-128k-4` | 1,024 | 327,720 | 9 | -143.150 | 160 B | 389,500 B | 12,132 B | 0.095s | 0.083s | 18.948s | 0.124s | 0.001s | 0.111s | Correct |
 
-- **Summary:** LeanVM proving time is essentially unchanged compared with the previous server baseline. The guest-loop parallelism reduces some execution-side sub-stages, but the dominant WHIR, stack-and-commit, and logup costs still control total prover time.
+- **Summary:** All profiles verify and reconstruct correctly. The retained code state mainly reduces sampled opening bandwidth; LeanVM proving remains the dominant cost.
 
-#### Sampling and Opening Size
+#### Sampling and Opening Size Reduction
 
-| Profile | Opened cells before | Opened cells after | Sample size before | Sample size after | Sample-size change |
+| Profile | Opened cells before | Opened cells now | Sample size before | Sample size now | Sample-size reduction |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | `tiny` | 1 | 1 | 100 B | 100 B | 0.0% |
-| `medium` | 16 | 2 | 6,720 B | 840 B | -87.5% |
-| `large` | 63 | 2 | 46,620 B | 1,480 B | -96.8% |
-| `stress` | 105 | 5 | 138,180 B | 6,580 B | -95.2% |
-| `blob-128k-1` | 114 | 9 | 66,120 B | 5,220 B | -92.1% |
-| `blob-128k-4` | 114 | 9 | 153,672 B | 12,132 B | -92.1% |
+| `medium` | 16 | 2 | 6,720 B | 840 B | 87.5% |
+| `large` | 63 | 2 | 46,620 B | 1,480 B | 96.8% |
+| `stress` | 105 | 5 | 138,180 B | 6,580 B | 95.2% |
+| `blob-128k-1` | 114 | 9 | 66,120 B | 5,220 B | 92.1% |
+| `blob-128k-4` | 114 | 9 | 153,672 B | 12,132 B | 92.1% |
 
-- **Summary:** The large reduction in sample size comes from the corrected formal DAS sampler-quality calculation, not from C-level parallelism.
+- **Summary:** The major visible improvement is opening bandwidth: medium and larger profiles now need only 2-9 opened cell columns while still satisfying the $124$-bit sampler-quality target with $T=128$.
 
-#### Prover Sub-Stage Comparison
+#### LeanVM Proving Time vs Previous Server Baseline
 
-| Profile | Bytecode execution | Trace generation | Memory access count | Bytecode access count | Statement finalization |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| `medium` | 0.004s -> 0.004s (-14.7%) | 0.006s -> 0.005s (-2.2%) | 0.001s -> 0.002s (+110.3%) | 0.000s -> 0.001s (+132.6%) | 0.000s -> 0.000s (+4.6%) |
-| `large` | 0.035s -> 0.029s (-17.6%) | 0.039s -> 0.038s (-3.1%) | 0.008s -> 0.018s (+125.6%) | 0.002s -> 0.006s (+177.1%) | 0.000s -> 0.000s (+9.8%) |
-| `stress` | 0.295s -> 0.249s (-15.7%) | 0.317s -> 0.306s (-3.4%) | 0.064s -> 0.152s (+138.0%) | 0.016s -> 0.049s (+202.8%) | 0.000s -> 0.000s (-0.2%) |
-| `blob-128k-1` | 0.138s -> 0.135s (-2.4%) | 0.153s -> 0.148s (-2.8%) | 0.032s -> 0.084s (+164.2%) | 0.008s -> 0.026s (+227.2%) | 0.001s -> 0.001s (+28.5%) |
-| `blob-128k-4` | 0.569s -> 0.501s (-11.8%) | 0.617s -> 0.595s (-3.5%) | 0.127s -> 0.328s (+157.4%) | 0.032s -> 0.105s (+224.8%) | 0.001s -> 0.001s (+7.5%) |
+| Profile | Previous server LeanVM prove | Current LeanVM prove | Change |
+| --- | ---: | ---: | ---: |
+| `tiny` | 0.031s | 0.030s | -3.2% |
+| `medium` | 0.171s | 0.169s | -1.2% |
+| `large` | 1.115s | 1.112s | -0.3% |
+| `stress` | 9.398s | 9.327s | -0.8% |
+| `blob-128k-1` | 4.643s | 4.589s | -1.2% |
+| `blob-128k-4` | 19.015s | 18.948s | -0.4% |
 
-- **Summary:** C1/C2/C4 reduced bytecode execution by roughly 2-18%, but this did not translate into end-to-end proving-time improvement. C5/C6's atomic-counter implementation made access-count construction slower on this server. These C1/C2/C4/C5/C6/C7 code changes were reverted; future C5/C6 work should use a lower-overhead sharded reduction before being treated as a net optimization.
+- **Summary:** C8/C9/C10 preserve the expected native-build and thread-configuration setup, but they do not materially change the protocol or the LeanVM proving relation. The small proving-time changes are within normal benchmark noise.
+
+#### C-Parallel Attempt Outcome
+
+| Attempted item | Outcome |
+| --- | --- |
+| C1/C2/C4 guest-loop parallel rewrites | Reverted. They reduced a small execution-side sub-stage but did not improve total proving time. |
+| C5/C6 prover access-count parallelism | Reverted. The atomic-counter implementation made access counting slower on the server. |
+| C7 statement finalization parallelism | Reverted. The measured stage was too small to justify keeping extra complexity. |
+| C8/C9/C10 native CPU and thread configuration | Retained. These are useful environment-level settings and do not affect protocol soundness. |
+
+- **Summary:** The clean conclusion is that the current successful optimization is the sampling correction; the attempted C-level parallel changes were measured and then removed because they were not net improvements.
