@@ -138,22 +138,23 @@ Sizes use the four-byte canonical serialization of one KoalaBear element.
 
 ## Benchmark Results
 
-All six proofs were accepted and all six profiles completed reconstruction from an independently sampled arbitrary set of exactly $t$ cells. LeanVM currently configures WHIR for $124$-bit security, so sampling uses the minimum number of distinct cells satisfying the matching worst-case availability bound:
+All six proofs were accepted and all six profiles completed reconstruction from an independently sampled arbitrary set of exactly $t$ cells. LeanVM currently configures WHIR for $124$-bit security, so sampling uses the minimum per-transcript number of distinct cells satisfying the formal worst-case sampler-quality bound:
 $$
-\Pr[\mathsf{miss}]
-=\frac{\binom{t-1}{q}}{\binom{\ell}{q}}
+\nu_{\mathrm{wor}}(\Delta,N,Q,T)
+=\binom{N}{\Delta}
+\left(\frac{\binom{\Delta}{Q}}{\binom{N}{Q}}\right)^T
 \le 2^{-124},
 $$
-where an unreconstructable encoding has at most $t-1$ available cell columns. For the two smallest domains, $124$-bit soundness requires $q=t$, making the bound zero. The larger profiles achieve the target with $q<t$. Raising only the sampling target above $124$ bits would not raise the end-to-end demo security while WHIR remains configured for $124$ bits.
+where $N=\ell=m/c$, $\Delta=t-1$, $Q$ is the opened-cell count per transcript, and this benchmark uses $T=128$ accepting transcripts. Raising only the sampling target above $124$ bits would not raise the end-to-end demo security while WHIR remains configured for $124$ bits.
 
 | Dataset | Bytecode instructions | Read-only elements | Opened cells $q$ | Commitment size (KB) | Proof size (KB) | Sample size (KB) | Encode + commit | Prover preprocess | LeanVM prove | Verifier rebuild + LeanVM verify | Verify openings | Reconstruct | Result |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `tiny` | 512 | 104 | 1 | 0.094 | 187.723 | 0.098 | 0.000s | 0.005s | 0.100s | 0.028s | 0.000s | 0.000s | Correct |
-| `medium` | 512 | 1,352 | 16 | 0.281 | 260.516 | 6.562 | 0.001s | 0.006s | 0.200s | 0.035s | 0.000s | 0.000s | Correct |
-| `large` | 1,024 | 5,256 | 63 | 0.531 | 308.270 | 45.527 | 0.006s | 0.015s | 0.915s | 0.045s | 0.002s | 0.003s | Correct |
-| `stress` | 1,024 | 20,744 | 105 | 1.031 | 376.602 | 134.941 | 0.043s | 0.016s | 6.812s | 0.055s | 0.006s | 0.025s | Correct |
-| `blob-128k-1` | 1,024 | 327,696 | 114 | 0.062 | 357.512 | 64.570 | 0.023s | 0.077s | 3.600s | 0.130s | 0.003s | 0.067s | Correct |
-| `blob-128k-4` | 1,024 | 327,720 | 114 | 0.156 | 398.496 | 150.070 | 0.097s | 0.079s | 17.400s | 0.209s | 0.008s | 0.143s | Correct |
+| `tiny` | 512 | 104 | 1 | 0.094 | 174.410 | 0.098 | 0.000s | 0.006s | 0.030s | 0.027s | 0.000s | 0.000s | Correct |
+| `medium` | 512 | 1,352 | 2 | 0.281 | 245.266 | 0.820 | 0.001s | 0.005s | 0.169s | 0.034s | 0.000s | 0.001s | Correct |
+| `large` | 1,024 | 5,256 | 2 | 0.531 | 292.426 | 1.445 | 0.006s | 0.010s | 1.112s | 0.043s | 0.000s | 0.004s | Correct |
+| `stress` | 1,024 | 20,744 | 5 | 1.031 | 358.602 | 6.426 | 0.047s | 0.014s | 9.327s | 0.056s | 0.000s | 0.029s | Correct |
+| `blob-128k-1` | 1,024 | 327,696 | 9 | 0.062 | 339.949 | 5.098 | 0.026s | 0.083s | 4.589s | 0.125s | 0.000s | 0.070s | Correct |
+| `blob-128k-4` | 1,024 | 327,720 | 9 | 0.156 | 380.371 | 11.848 | 0.095s | 0.083s | 18.948s | 0.124s | 0.001s | 0.111s | Correct |
 
 Size columns use $1\,\mathrm{KB}=1024$ bytes. The benchmark columns measure the following:
 

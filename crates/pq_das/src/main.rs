@@ -4,8 +4,8 @@ use backend::{PrimeCharacteristicRing, PrimeField32};
 use clap::{Parser, ValueEnum};
 use lean_vm::F;
 use pq_das::{
-    DIGEST_LEN, ParameterProfile, SAMPLING_SOUNDNESS_BITS, commitment_size_bytes, demo_data, encode_and_commit,
-    prepare_statement, prove_codewords, query, reconstruct, sample_query_indices, transcript_size_bytes,
+    DIGEST_LEN, ParameterProfile, SAMPLING_SOUNDNESS_BITS, SAMPLING_TRANSCRIPTS, commitment_size_bytes, demo_data,
+    encode_and_commit, prepare_statement, prove_codewords, query, reconstruct, sample_query_indices, transcript_size_bytes,
     verify_execution_proof, verify_openings,
 };
 
@@ -147,6 +147,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         prepared.bytecode.read_only_data().len()
     );
     println!("sampling soundness target: {SAMPLING_SOUNDNESS_BITS} bits");
+    println!("sampling transcripts assumed: {SAMPLING_TRANSCRIPTS}");
     println!(
         "sampling log2 failure bound: {:.3}",
         profile.sampling_log2_failure(sample_count)
