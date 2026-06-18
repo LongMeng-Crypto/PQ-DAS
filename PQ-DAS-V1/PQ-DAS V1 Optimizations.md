@@ -127,3 +127,45 @@ The following results were measured on the ax42u server with
 | `blob-128k-4` | 10,029,486 / 16,777,216 | 59.8% | 50.0% | 76.6% |
 
 - **Summary:** Execution-table padding wastes 34-40% of rows, so an optimization must cross a power-of-two boundary to produce the largest proving-time reduction.
+
+### C-Parallel Optimization Attempt
+
+The following results were measured on the ax42u server after trying C1, C2, C4, C5, C6, C7, C8, C9, and C10. This run uses the corrected DAS sampling rule with $T=128$, so opened cells and sample sizes are not directly comparable to the original fixed-withholding-set sampling rule. The C1/C2/C4/C5/C6/C7 code changes were later reverted because they did not improve total proving time; only the sampling correction and C8/C9/C10 environment support are retained.
+
+#### End-to-End Runtime Table
+
+| Profile | Encode + commit | Prover preprocess | LeanVM prove | Verifier rebuild + LeanVM verify | Verify openings |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `tiny` | 0.000 | 0.006 | 0.033 | 0.027 | 0.000 |
+| `medium` | 0.001 | 0.005 | 0.167 | 0.035 | 0.000 |
+| `large` | 0.006 | 0.010 | 1.119 | 0.043 | 0.000 |
+| `stress` | 0.046 | 0.014 | 9.403 | 0.053 | 0.000 |
+| `blob-128k-1` | 0.026 | 0.084 | 4.666 | 0.122 | 0.000 |
+| `blob-128k-4` | 0.096 | 0.084 | 19.218 | 0.125 | 0.001 |
+
+- **Summary:** LeanVM proving time is essentially unchanged compared with the previous server baseline. The guest-loop parallelism reduces some execution-side sub-stages, but the dominant WHIR, stack-and-commit, and logup costs still control total prover time.
+
+#### Sampling and Opening Size
+
+| Profile | Opened cells before | Opened cells after | Sample size before | Sample size after | Sample-size change |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `tiny` | 1 | 1 | 100 B | 100 B | 0.0% |
+| `medium` | 16 | 2 | 6,720 B | 840 B | -87.5% |
+| `large` | 63 | 2 | 46,620 B | 1,480 B | -96.8% |
+| `stress` | 105 | 5 | 138,180 B | 6,580 B | -95.2% |
+| `blob-128k-1` | 114 | 9 | 66,120 B | 5,220 B | -92.1% |
+| `blob-128k-4` | 114 | 9 | 153,672 B | 12,132 B | -92.1% |
+
+- **Summary:** The large reduction in sample size comes from the corrected formal DAS sampler-quality calculation, not from C-level parallelism.
+
+#### Prover Sub-Stage Comparison
+
+| Profile | Bytecode execution | Trace generation | Memory access count | Bytecode access count | Statement finalization |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `medium` | 0.004s -> 0.004s (-14.7%) | 0.006s -> 0.005s (-2.2%) | 0.001s -> 0.002s (+110.3%) | 0.000s -> 0.001s (+132.6%) | 0.000s -> 0.000s (+4.6%) |
+| `large` | 0.035s -> 0.029s (-17.6%) | 0.039s -> 0.038s (-3.1%) | 0.008s -> 0.018s (+125.6%) | 0.002s -> 0.006s (+177.1%) | 0.000s -> 0.000s (+9.8%) |
+| `stress` | 0.295s -> 0.249s (-15.7%) | 0.317s -> 0.306s (-3.4%) | 0.064s -> 0.152s (+138.0%) | 0.016s -> 0.049s (+202.8%) | 0.000s -> 0.000s (-0.2%) |
+| `blob-128k-1` | 0.138s -> 0.135s (-2.4%) | 0.153s -> 0.148s (-2.8%) | 0.032s -> 0.084s (+164.2%) | 0.008s -> 0.026s (+227.2%) | 0.001s -> 0.001s (+28.5%) |
+| `blob-128k-4` | 0.569s -> 0.501s (-11.8%) | 0.617s -> 0.595s (-3.5%) | 0.127s -> 0.328s (+157.4%) | 0.032s -> 0.105s (+224.8%) | 0.001s -> 0.001s (+7.5%) |
+
+- **Summary:** C1/C2/C4 reduced bytecode execution by roughly 2-18%, but this did not translate into end-to-end proving-time improvement. C5/C6's atomic-counter implementation made access-count construction slower on this server. These C1/C2/C4/C5/C6/C7 code changes were reverted; future C5/C6 work should use a lower-overhead sharded reduction before being treated as a net optimization.

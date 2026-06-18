@@ -21,13 +21,13 @@
 
 ## C. Parallelism and Low-Level Prover Optimization
 
-- [x] **C1. Parallelize row-hash guest loops.**
-- [x] **C2. Parallelize column-hash guest loops.**
+- [ ] **C1. Parallelize row-hash guest loops.**
+- [ ] **C2. Parallelize column-hash guest loops.**
 - [ ] **C3. Parallelize each independent Merkle-tree level.**
-- [x] **C4. Parallelize RS membership checks across rows.**
-- [x] **C5. Parallelize prover memory access-count construction:** use parallel atomic counters followed by field accumulator materialization.
-- [x] **C6. Parallelize bytecode access-count construction.**
-- [x] **C7. Parallelize independent trace-table processing:** parallelize order-independent per-table claim materialization while preserving Fiat-Shamir transcript order.
+- [ ] **C4. Parallelize RS membership checks across rows.**
+- [ ] **C5. Parallelize prover memory access-count construction:** use thread-local accumulators followed by reduction.
+- [ ] **C6. Parallelize bytecode access-count construction.**
+- [ ] **C7. Parallelize independent trace-table processing.**
 - [x] **C8. Enable native CPU optimization:** benchmark builds using `RUSTFLAGS="-C target-cpu=native"`.
 - [x] **C9. Verify SIMD utilization:** confirm AVX2 or AVX-512 Poseidon and packed KoalaBear arithmetic are active.
 - [x] **C10. Tune LeanVM worker-thread count for the benchmark machine:** support `PQ_DAS_NUM_THREADS` and `RAYON_NUM_THREADS` for the internal worker pool.

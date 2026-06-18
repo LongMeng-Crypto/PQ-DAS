@@ -1,6 +1,5 @@
 use std::{
     collections::BTreeMap,
-    sync::atomic::{AtomicUsize, Ordering},
     time::{Duration, Instant},
 };
 
@@ -132,43 +131,37 @@ pub fn prove_execution(
     tracing::info!("Trace tables sizes: {}", table_log.magenta());
     timings.prover_setup = started.elapsed();
 
+    // TODO parrallelize
+    let mut memory_acc = unsafe { ArenaVec::<F>::zeroed(memory.len()) };
     let started = Instant::now();
-    let memory_acc = info_span!("Building memory access count").in_scope(|| -> Result<ArenaVec<F>, ProverError> {
-        let counters: Vec<_> = (0..memory.len()).map(|_| AtomicUsize::new(0)).collect();
+    info_span!("Building memory access count").in_scope(|| -> Result<(), ProverError> {
         for (table, trace) in &traces {
             let buses = table.bus_interactions();
             for group in memory_lookup_groups(&buses) {
                 let idx_col = &trace.columns[group.idx_col];
                 let n = group.value_cols.len();
-                parallel::for_each_index(idx_col.len(), |i| {
-                    let base = idx_col[i].to_usize();
-                    assert!(base + n <= counters.len(), "memory lookup out of bounds");
-                    for offset in 0..n {
-                        counters[base + offset].fetch_add(1, Ordering::Relaxed);
+                for idx in idx_col {
+                    let base = idx.to_usize();
+                    let cells = memory_acc.get_mut(base..base + n).ok_or(RunnerError::OutOfMemory)?;
+                    for cell in cells {
+                        *cell += F::ONE;
                     }
-                });
+                }
             }
         }
-        Ok(ArenaVec::par_collect(memory.len(), |i| {
-            F::from_usize(counters[i].load(Ordering::Relaxed))
-        }))
+        Ok(())
     })?;
     timings.memory_access_count = started.elapsed();
 
+    // // TODO parrallelize
+    let mut bytecode_acc = unsafe { ArenaVec::<F>::zeroed(bytecode.padded_size()) };
     let started = Instant::now();
-    let bytecode_acc =
-        info_span!("Building bytecode access count").in_scope(|| -> Result<ArenaVec<F>, ProverError> {
-            let pc_col = &traces[&Table::execution()].columns[EXEC_COL_PC];
-            let counters: Vec<_> = (0..bytecode.padded_size()).map(|_| AtomicUsize::new(0)).collect();
-            parallel::for_each_index(pc_col.len(), |i| {
-                let pc = pc_col[i].to_usize();
-                assert!(pc < counters.len(), "bytecode PC out of bounds");
-                counters[pc].fetch_add(1, Ordering::Relaxed);
-            });
-            Ok(ArenaVec::par_collect(bytecode.padded_size(), |i| {
-                F::from_usize(counters[i].load(Ordering::Relaxed))
-            }))
-        })?;
+    info_span!("Building bytecode access count").in_scope(|| -> Result<(), ProverError> {
+        for pc in traces[&Table::execution()].columns[EXEC_COL_PC].iter() {
+            *bytecode_acc.get_mut(pc.to_usize()).ok_or(RunnerError::PCOutOfBounds)? += F::ONE;
+        }
+        Ok(())
+    })?;
     timings.bytecode_access_count = started.elapsed();
 
     // 1st Commitment
@@ -284,22 +277,16 @@ pub fn prove_execution(
     timings.air_sumcheck = started.elapsed();
 
     let started = Instant::now();
-    let final_column_evals: Vec<Vec<EF>> = sessions.iter().map(|session| session.final_column_evals()).collect();
-    for col_evals in &final_column_evals {
+    for (idx, table) in ALL_TABLES.iter().enumerate() {
+        let col_evals = sessions[idx].final_column_evals();
         prover_state.add_extension_scalars(&col_evals);
-    }
 
-    let claims = parallel::par_map_collect(ALL_TABLES.len(), |idx| {
-        let table = ALL_TABLES[idx];
-        let col_evals = &final_column_evals[idx];
         let natural_ordering_point =
-            natural_ordering_point_for_session(&sumcheck_air_point.0, traces[&table].log_n_rows);
+            natural_ordering_point_for_session(&sumcheck_air_point.0, traces[table].log_n_rows);
         macro_rules! split {
             ($t:expr) => {{ columns_evals_flat_and_shift($t, &col_evals, &natural_ordering_point) }};
         }
-        delegate_to_inner!(&table => split)
-    });
-    for (table, claim) in ALL_TABLES.iter().zip(claims) {
+        let claim = delegate_to_inner!(table => split);
         committed_statements.get_mut(table).unwrap().push(claim);
     }
 
