@@ -1,0 +1,32 @@
+Compilation time: 1.425 s
+Construction:     column-commit
+Bytecode size:    84620
+Cycles:           86666
+Poseidon16 calls: 10753
+ExtensionOp calls:65548
+Proving time:     0.555 s
+Proof size:       255.80 KiB
+Throughput:       279.24 KiB/s (1 blobs * 40960 FE / 0.555 s)
+	Command being timed: "target/release/lean-da --n-blobs 1 --construction column-commit"
+	User time (seconds): 6.54
+	System time (seconds): 1.51
+	Percent of CPU this job got: 383%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:02.10
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 1097808
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 151
+	Minor (reclaiming a frame) page faults: 507489
+	Voluntary context switches: 5080
+	Involuntary context switches: 1495
+	Swaps: 0
+	File system inputs: 12656
+	File system outputs: 10944
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
