@@ -4,3 +4,5 @@
 minimal_zkVM.synctex.gz
 .claude
 misc/.build
+/external/
+*:sec.endpointdlp
