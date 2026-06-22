@@ -1,0 +1,4 @@
+[submodule "external/tau-leanMultisig"]
+	path = external/tau-leanMultisig
+	url = https://github.com/frisitano/leanMultisig.git
+	branch = feat/direct-leanair-construction-prover
