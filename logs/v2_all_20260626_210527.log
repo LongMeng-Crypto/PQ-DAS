@@ -1,0 +1,6 @@
+PQ-DAS V2 LeanVM benchmark table
+| Profile | Bytecode instructions | Read-only elements | Opened cells | $\log_2\nu_{\mathrm{wor}}$ | Commitment size | Proof size | Sample size | Encode + commit | Prover preprocess | LeanVM prove | Verifier rebuild + LeanVM verify | Verify openings | Reconstruct | VM cycles | Poseidon16 calls | ExtensionOp calls | Result |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| blob-128k-1 | 1024 | 327696 | 19 | -108.031 | 0.06 KB | 267.33 KB | 10.76 KB | 0.024s | 0.085s | 0.979s | 0.116s | 0.001s | 0.069s | 354546 | 12286 | 65536 | accepted |
+| blob-128k-14 | 1024 | 327800 | 19 | -108.031 | 0.47 KB | 340.20 KB | 72.51 KB | 0.306s | 0.083s | 8.596s | 0.123s | 0.004s | 0.243s | 3618464 | 174065 | 917504 | accepted |
+| blob-128k-16 | 1024 | 327816 | 19 | -108.031 | 0.53 KB | 354.26 KB | 82.01 KB | 0.346s | 0.083s | 9.587s | 0.123s | 0.004s | 0.269s | 4087521 | 196591 | 1048576 | accepted |
