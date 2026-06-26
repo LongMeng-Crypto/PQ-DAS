@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, time::Duration};
 
-use backend::{ArenaVec, PrimeCharacteristicRing, arena_vec, poseidon_hash_slice, poseidon16_compress_pair};
+use backend::{ArenaVec, PrimeCharacteristicRing, arena_vec, poseidon16_compress_pair};
 use lean_compiler::{CompilationFlags, ProgramSource, compile_program_with_flags};
 use lean_prover::{default_whir_config, prove_execution::prove_execution, verify_execution::verify_execution};
 use lean_vm::{Bytecode, ExecutionWitness, F, Hints};
@@ -8,7 +8,7 @@ use lean_vm::{Bytecode, ExecutionWitness, F, Hints};
 use crate::{
     Commitment, DIGEST_LEN, DemoError, EXT_DEGREE, ParameterProfile, PreparedStatement, ProofBundle,
     encoding::{Codewords, Data, ErasureDecoder, encode},
-    hashing::{Digest, merkle_layers, row_hash},
+    hashing::{Digest, merkle_layers},
     membership,
 };
 
@@ -73,7 +73,66 @@ pub fn column_merkle_depth(profile: ParameterProfile) -> usize {
 
 /// Hashes one base-field cell into a Poseidon digest.
 pub fn cell_hash(cell: &[F]) -> Digest {
-    poseidon_hash_slice(cell)
+    fixed_compression_hash(cell)
+}
+
+/// Maps a V2 physical even-first codeword index back to the logical FFT-domain index.
+fn physical_to_logical(profile: ParameterProfile, index: usize) -> usize {
+    debug_assert!(index < profile.m);
+    if index < profile.k {
+        2 * index
+    } else {
+        2 * (index - profile.k) + 1
+    }
+}
+
+/// Reorders a logical codeword as all even-domain symbols followed by all odd-domain symbols.
+fn logical_to_physical_codeword(profile: ParameterProfile, row: &[F]) -> Vec<F> {
+    debug_assert_eq!(row.len(), profile.m);
+    (0..profile.m)
+        .map(|index| row[physical_to_logical(profile, index)])
+        .collect()
+}
+
+fn physical_codewords(profile: ParameterProfile, codewords: Codewords) -> Codewords {
+    codewords
+        .iter()
+        .map(|row| logical_to_physical_codeword(profile, row))
+        .collect()
+}
+
+/// Reorders the public RS check vector to match V2's even-first physical codeword layout.
+fn physical_check_vector(profile: ParameterProfile, check_vector: &membership::CheckVector) -> membership::CheckVector {
+    (0..profile.m)
+        .map(|index| check_vector[physical_to_logical(profile, index)])
+        .collect()
+}
+
+/// Hashes the contiguous systematic prefix of one V2 physical codeword.
+fn row_hash(profile: ParameterProfile, row: &[F]) -> Digest {
+    debug_assert_eq!(row.len(), profile.m);
+    fixed_compression_hash(&row[..profile.k])
+}
+
+/// Hashes field data as a fixed-length chain of Poseidon16 compression calls.
+fn fixed_compression_hash(data: &[F]) -> Digest {
+    debug_assert!(!data.is_empty());
+    debug_assert!(data.len().is_multiple_of(DIGEST_LEN));
+    let mut chunks = data.chunks_exact(DIGEST_LEN).map(|chunk| chunk.try_into().unwrap());
+    compression_chain_from_chunks(&mut chunks)
+}
+
+fn compression_chain_from_chunks(chunks: &mut impl Iterator<Item = Digest>) -> Digest {
+    let zero = [F::ZERO; DIGEST_LEN];
+    let first = chunks
+        .next()
+        .expect("fixed-compression hash requires at least one chunk");
+    let Some(second) = chunks.next() else {
+        return poseidon16_compress_pair(&zero, &first);
+    };
+    chunks.fold(poseidon16_compress_pair(&first, &second), |state, chunk| {
+        poseidon16_compress_pair(&state, &chunk)
+    })
 }
 
 /// Encodes data and constructs V2's row digests and column-root commitment.
@@ -82,7 +141,7 @@ pub fn encode_and_commit(profile: ParameterProfile, data: &Data) -> Result<(Comm
     if data.len() != profile.n || data.iter().any(|blob| blob.len() != profile.k) {
         return Err(DemoError::InvalidDataShape);
     }
-    let codewords = encode(profile, data);
+    let codewords = physical_codewords(profile, encode(profile, data));
     let row_hashes = codewords.iter().map(|row| row_hash(profile, row)).collect();
     let n_padded = padded_rows(profile);
     let zero = [F::ZERO; DIGEST_LEN];
@@ -211,7 +270,7 @@ pub fn reconstruct(commitment: &Commitment, transcripts: &[Transcript]) -> Resul
     indices.sort_unstable();
     let symbol_indices: Vec<_> = indices
         .iter()
-        .flat_map(|&index| (0..profile.c).map(move |offset| index * profile.c + offset))
+        .flat_map(|&index| (0..profile.c).map(move |offset| physical_to_logical(profile, index * profile.c + offset)))
         .collect();
     let decoder = ErasureDecoder::new(profile, &symbol_indices).ok_or(DemoError::ReconstructionFailed)?;
     (0..profile.n)
@@ -322,7 +381,8 @@ fn read_only_data(commitment: &Commitment, check_vector: &membership::CheckVecto
 
 /// Recomputes V2 Fiat-Shamir data, generates L, and compiles the V2 guest.
 pub fn prepare_statement(commitment: Commitment) -> Result<PreparedStatement, DemoError> {
-    let check_vector = membership::check_vector(&commitment).ok_or(DemoError::ChallengeOnDomain)?;
+    let logical_check_vector = membership::check_vector(&commitment).ok_or(DemoError::ChallengeOnDomain)?;
+    let check_vector = physical_check_vector(commitment.profile, &logical_check_vector);
     let bytecode = compile_program_with_flags(&guest_source(), compilation_flags(&commitment)?)
         .with_read_only_data(read_only_data(&commitment, &check_vector));
     Ok(PreparedStatement {

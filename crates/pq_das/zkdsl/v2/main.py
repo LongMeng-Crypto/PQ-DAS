@@ -46,31 +46,39 @@ def assert_ext_zero(a):
     return
 
 
-# Poseidon-hashes complete rate-eight blocks with the same length IV as V1.
-def hash_chunks(data, num_chunks: Const):
-    iv = Array(DIGEST_LEN)
-    iv[0] = num_chunks * DIGEST_LEN
-    for i in unroll(1, DIGEST_LEN):
-        iv[i] = 0
+# Builds one zero digest.
+def zero_digest_ret():
+    zero = Array(DIGEST_LEN)
+    zero_digest(zero)
+    return zero
 
-    full = Array(2 * DIGEST_LEN)
+
+# Hashes contiguous rate-eight blocks as a fixed Poseidon16 compression chain.
+def hash_contiguous_chunks(data, num_chunks: Const):
     if num_chunks == 1:
-        poseidon16_permute(iv, data, full)
-    else:
-        states = Array((num_chunks - 1) * DIGEST_LEN)
-        poseidon16_permute_half(iv, data, states)
-        for chunk in range(1, num_chunks - 1):
-            poseidon16_permute_half(
-                states + (chunk - 1) * DIGEST_LEN,
-                data + chunk * DIGEST_LEN,
-                states + chunk * DIGEST_LEN,
-            )
-        poseidon16_permute(
-            states + (num_chunks - 2) * DIGEST_LEN,
-            data + (num_chunks - 1) * DIGEST_LEN,
-            full,
+        out_one = Array(DIGEST_LEN)
+        poseidon16_compress_half(zero_digest_ret(), data, out_one)
+        return out_one
+    if num_chunks == 2:
+        out_two = Array(DIGEST_LEN)
+        poseidon16_compress_half(data, data + DIGEST_LEN, out_two)
+        return out_two
+
+    states = Array((num_chunks - 2) * DIGEST_LEN)
+    poseidon16_compress_half(data, data + DIGEST_LEN, states)
+    for chunk in range(1, num_chunks - 2):
+        poseidon16_compress_half(
+            states + (chunk - 1) * DIGEST_LEN,
+            data + (chunk + 1) * DIGEST_LEN,
+            states + chunk * DIGEST_LEN,
         )
-    return full + DIGEST_LEN
+    out_many = Array(DIGEST_LEN)
+    poseidon16_compress_half(
+        states + (num_chunks - 3) * DIGEST_LEN,
+        data + (num_chunks - 1) * DIGEST_LEN,
+        out_many,
+    )
+    return out_many
 
 
 # Builds a complete binary Merkle root over an in-memory digest array.
@@ -101,18 +109,13 @@ def main():
     cell_digests = Array(N_CELLS * N_PADDED * DIGEST_LEN)
 
     for row in range(0, N):
-        systematic = Array(K)
-        for i in range(0, K):
-            systematic[i] = codewords[row * M + i * SYSTEMATIC_STRIDE]
-        row_digest = hash_chunks(systematic, ROW_CHUNKS)
+        row_base = codewords + row * M
+        row_digest = hash_contiguous_chunks(row_base, ROW_CHUNKS)
         for i in unroll(0, DIGEST_LEN):
             assert row_digest[i] == public_row_hashes[row * DIGEST_LEN + i]
 
         for cell in range(0, N_CELLS):
-            cell_data = Array(C)
-            for offset in unroll(0, C):
-                cell_data[offset] = codewords[row * M + cell * C + offset]
-            digest = hash_chunks(cell_data, CELL_CHUNKS)
+            digest = hash_contiguous_chunks(row_base + cell * C, CELL_CHUNKS)
             copy_digest(digest, cell_digests + (cell * N_PADDED + row) * DIGEST_LEN)
 
     for cell in range(0, N_CELLS):
