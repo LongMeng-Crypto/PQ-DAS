@@ -1,19 +1,15 @@
----
-title: PQ-DAS V2 Design
----
-
 # PQ-DAS V2 Design
 
 ## Purpose
 
-This document collects the second version of the PQ-DAS Encoding + Prove design. The main difference between this version and the V1 is that this version has a more efficienct commitment layout: Codeword --> Cell digests --> Row/Column commitments. By hashing each cell first and then do row/column commitments on the cell digests, the hash calls are less than directly performing row/column commitments on the codewords.
+This document collects the second version of the PQ-DAS Encoding + Prove design. The main difference between this version and the V1 is that this version has a more efficienct commitment layout: Codeword --> Cell digests --> Row/Column commitments. By hashing each cell first and then do row/column commitments on the cell digests, the hash calls are less than directly performing row/column commitments on the codewords, because the cell digests can be reused for row/column commitments.
 
 ## DAS Construction
 
-![image](https://hackmd.io/_uploads/rkTDGoIffl.png)
+![image](https://hackmd.io/_uploads/Hklshy0YMMl.png)
 
 - The Setup algorithm $\mathsf{Setup}(1^{\lambda}) \rightarrow {\sf pp}$:
-    1. Choose a hash function $\mathsf{H}: \{0, 1\}^* \rightarrow \{0, 1\}^{\lambda}$ with domain-separated cell, chain, Merkle tree calls. 
+    1. Choose a hash function $\mathsf{H}: \{0, 1\}^* \rightarrow \{0, 1\}^{\lambda}$ with domain-separated cell, chain, Merkle tree calls.
     2. Define the Reed-Solomon (RS) code ${\sf RS}[\mathbb{F}, {\sf U}, \rho]$ and its corresponding encoding algorithm $\mathcal{C}: \mathbb{F}^k \rightarrow \mathbb{F}^m$, where $\mathbb{F}$ is a finite field, ${\sf U}$ is the evaluation domain, $\rho$ is the code rate, $k$ is the length of the input vector, $m = |{\sf U}|$ is the length of the output vector, which satisfies $k = \rho m$.
     3. Define the number of field elements $c$ in a cell.
     4. Define the reconstruction threshold $t = \left\lceil \frac{k}{c} \right\rceil$ in cells.
@@ -26,17 +22,17 @@ This document collects the second version of the PQ-DAS Encoding + Prove design.
     3. Form a matrix such that each row is a codeword $w_i$. We group every $c$ consecutive field elements in each $w_i$ as a cell, so there are in total $\ell = \frac{m}{c}$ cells on each row. We use $W_{i,j} = (w_{i,(j-1)c+1},\ldots,w_{i,jc}) \in \mathbb{F}^c$ to denote the $j$-th cell on the $i$-th row in the matrix.
     4. Hash each cell into a cell digest, i.e., $\forall i \in [1,n], j \in [1,\ell]$: $e_{i,j}=\mathsf{H}(W_{i,j})$.
     5. Hash-chain the systematic cell digests on each row, i.e., $\forall i \in [1,n]$: $r_i=\mathsf{H}(e_{i,1},\ldots,e_{i,t})$.
-    6. Hash-chain all row digests, i.e., ${\sf root}_{\sf row}=\mathsf{H}(r_1,\ldots,r_n)$.
-    7. Generate one Merkle root for each column of cell digests, i.e., $\forall j \in [1,\ell]$: $C_j=\mathsf{Merkle.Com}(e_{1,j}\parallel\cdots\parallel e_{n,j})$.
-    8. Generate a Merkle tree for all column roots, i.e., ${\sf root}_{\sf col}=\mathsf{Merkle.Com}(C_1\parallel\cdots\parallel C_{\ell})$.
-    9. Aggregate the row and column commitments, i.e., ${\sf root}=\mathsf{H}({\sf root}_{\sf row}\parallel{\sf root}_{\sf col})$.
+    6. Generate one Merkle root for each column of cell digests, i.e., $\forall j \in [1,\ell]$: $C_j=\mathsf{Merkle.Com}(e_{1,j}, ..., e_{n,j})$.
+    7. Generate a Merkle tree for all column roots, i.e., ${\sf root}_{\sf col}=\mathsf{Merkle.Com}(C_1, ...,  C_{\ell})$.
+    8. Set ${\sf root} = (\{r_i\}_{i \in [1, n]}, {\sf root}_{\sf col})$.
+    9. Compute the public RS check vector $L$ outside the proof from all public parameters so far. The details of how to compute $L$ can be referred to section "RS Membership Check Instantiations".
     10. Use LeanVM to generate a STARK proof $\pi \leftarrow {\sf LeanVM}.{\sf Prove}({\sf pp}_{\sf STARK}, {\sf stmt}, {\sf witn}, \mathcal{R})$, where
     \begin{aligned}
     \mathcal{R}
     =
-    \{(\mathsf{stmt},\mathsf{witn}) \;:\;&
-    \mathsf{stmt} = {\sf root},
-    \ \mathrm{witn}= \{w_i\}_{i \in [1, n]},\\
+    \{(\mathsf{stmt},\mathsf{\sf witn}) \;:\;&
+    \mathsf{stmt} = (\{r_i\}_{i \in [1, n]}, L, {\sf root}_{\sf col}),
+    \ \mathrm{\sf witn}= \{w_i\}_{i \in [1, n]}\\
     &
     \forall i\in[1,n],j\in[1,\ell],\;
     e_{i,j}=\mathsf{H}(W_{i,j}),\\
@@ -44,17 +40,13 @@ This document collects the second version of the PQ-DAS Encoding + Prove design.
     \forall i\in[1,n],\;
     r_i=\mathsf{H}(e_{i,1},\ldots,e_{i,t}),\\
     &
-    {\sf root}_{\sf row}=\mathsf{H}(r_1,\ldots,r_n),\\
-    &
     \forall j\in[1,\ell],\;
     C_j=\mathsf{Merkle.Com}(e_{1,j}\parallel\cdots\parallel e_{n,j}),\\
     &
     {\sf root}_{\sf col}=\mathsf{Merkle.Com}(C_1\parallel\cdots\parallel C_{\ell}),\\
     &
-    {\sf root}=\mathsf{H}({\sf root}_{\sf row}\parallel{\sf root}_{\sf col}),\\
-    &
     \forall i\in[1,n],\;
-    w_i\in \mathrm{RS}[\mathbb{F},\mathrm{U},\rho]
+    \langle L, w_i\rangle=0
     \}.
     \end{aligned}
     11. Open the outer Merkle authentication paths for all column roots, i.e., $\{{\sf auth}_j\}_{j \in [1, \ell]} = {\sf Merkle.Open}(C_1, ..., C_{\ell}, {\sf root}_{\sf col})$.
@@ -65,13 +57,14 @@ This document collects the second version of the PQ-DAS Encoding + Prove design.
     2. Set the transcript ${\sf tran} = (Q, \{W_{1, j}, ..., W_{n, j}, {\sf auth}_j\}_{j \in Q})$.
 
 - The verification algorithm ${\sf V}_2({\sf com}, {\sf tran}) \rightarrow b$:
-    1. Verify the STARK proof: Check if ${\sf LeanVM}.{\sf Verify}({{\sf pp}_{\sf STARK}, \sf stmt}, \pi) = 1$.
-    2. Verify the openings: Compute $\forall i\in[1,n],j\in Q:e_{i,j}=\mathsf{H}(W_{i,j})$ and $\forall j\in Q:C_j=\mathsf{Merkle.Com}(e_{1,j}\parallel\cdots\parallel e_{n,j})$, then check if ${\sf Merkle}.{\sf Verify}({\sf root}_{\sf col}, \{C_j, {\sf auth}_j\}_{j \in Q}) = 1$.
-    3. Check if ${\sf root}=\mathsf{H}({\sf root}_{\sf row}\parallel{\sf root}_{\sf col})$. If all checks pass, output $b = 1$. Otherwise, output $0$.
+    1. Recompute $L$ from the same computations as done by the prover.
+    2. Verify the STARK proof: Check if ${\sf LeanVM}.{\sf Verify}({{\sf pp}_{\sf STARK}, \sf stmt}, \pi) = 1$.
+    3. Verify the openings: Compute $\forall i\in[1,n],j\in Q:e_{i,j}=\mathsf{H}(W_{i,j})$ and $\forall j\in Q:C_j=\mathsf{Merkle.Com}(e_{1,j}, ..., e_{n,j})$, then check if ${\sf Merkle}.{\sf Verify}({\sf root}_{\sf col}, \{C_j, {\sf auth}_j\}_{j \in Q}) = 1$.
+    4. If all checks pass, output $b = 1$. Otherwise, output $0$.
 
-- The reconstruction algorithm ${\sf Ext}({\sf com}, {\sf tran}_1, ..., {\sf tran}_L) \rightarrow {\sf data}/\bot$:
-    1. For $i \in [1, L]$: Parse ${\sf tran}_i = (Q_i, \{W_{1, j}, ..., W_{n, j}, {\sf auth}_j\}_{j \in Q_i})$.
-    2. Check if $\forall i \in [1, L]$: ${\sf V}_2({\sf com}, {\sf tran}_i) = 1$. Otherwise return $\bot$.
+- The reconstruction algorithm ${\sf Ext}({\sf com}, {\sf tran}_1, ..., {\sf tran}_z) \rightarrow {\sf data}/\bot$:
+    1. For $i \in [1, z]$: Parse ${\sf tran}_i = (Q_i, \{W_{1, j}, ..., W_{n, j}, {\sf auth}_j\}_{j \in Q_i})$.
+    2. Check if $\forall i \in [1, z]$: ${\sf V}_2({\sf com}, {\sf tran}_i) = 1$. Otherwise return $\bot$.
     3. Find the union set $I$ for all query index sets, i.e., $I = Q_1 \cup Q_2 \cdots \cup Q_L$.
     4. Check if set $I$ has size over the threshold, i.e., $|I| \geq t$. If not return $\bot$.
     5. Reconstruct the data from the codeword symbols contained in the cells indexed by $I$, i.e., ${\sf data} = {\sf Reconst}\left(\{W_{1, j}, ..., W_{n, j}\}_{j \in I}\right)$.
@@ -175,34 +168,33 @@ The following table summarizes the flexible parameters in the current PQ-DAS V2 
 | $\mathsf{pp}_{\sf STARK}$ | Public parameters used by LeanVM. |
 
 ## Subset-soundness parameters
-Subset-soundness formula: $\nu_{\sf sub}=\binom{\ell}{\Delta}\binom{N_{\sf clients}}{L_{\sf sub}}\left(\frac{\binom{\Delta}{|Q|}}{\binom{\ell}{|Q|}}\right)^{L_{\sf sub}} \leq 2^{-\lambda}$, where $L_{\sf sub}=\left\lceil \epsilon N_{\sf clients}\right\rceil$. 
+
+In this section we define the subset-soundness formula and its security parameters , where we follow the subset-soundness/security-definition style of Hall-Andersen, Simkin, and Wagner, *Foundations of data availability sampling*, IACR ePrint 2023/1079, in the DAS security definitions section. We spell out both sampling modes because implementations may sample one verifier's queried columns either without replacement or with replacement.
 
 - $N_{\sf clients}$: total number of client transcripts considered by subset-soundness.
 - $\epsilon$: fraction of clients that the adversary attempts to make accept unavailable data.
 - $L_{\sf sub}=\lceil\epsilon N_{\sf clients}\rceil$: size of the adversarially selected accepting client subset.
 - $\Delta=t-1$: largest number of served cell columns that is still below the reconstruction threshold.
 - $\ell=m/c$: total number of cell columns per encoded row.
-- $|Q|$: number of distinct cell columns opened by one verifier.
-- $p_{\sf bad}(\Delta,\ell,|Q|)=\frac{\binom{\Delta}{|Q|}}{\binom{\ell}{|Q|}}$: probability that one verifier's query set is fully contained in a fixed non-reconstructing served set.
+- $|Q|$: number of columns opened by one verifier; in the with-replacement model this counts random draws, so duplicate draws may later be de-duplicated by an implementation.
 - $\nu_{\sf sub}$: subset-soundness failure bound.
-- $\lambda$: target security level in bits.
+- $\lambda$: target sampling security level in bits.
 - In words, $\nu_{\sf sub}$ upper-bounds the probability that there exists a non-reconstructing set of $\Delta<t$ cell columns and a subset of $L_{\sf sub}$ clients such that every selected client opens only columns inside that same $\Delta$-set; equivalently, the union of all openings from those clients still remains below the reconstruction threshold.
 
-Opening cells formula derivation: 
-- $\nu_{\sf sub}=\binom{\ell}{\Delta}\binom{N_{\sf clients}}{L_{\sf sub}}\left(\frac{\binom{\Delta}{|Q|}}{\binom{\ell}{|Q|}}\right)^{L_{\sf sub}} \leq 2^{-\lambda}$
-- $|Q|_{\min}=\min\left\{q\in\{1,\ldots,\ell\}:\log_2\binom{\ell}{\Delta}+\log_2\binom{N_{\sf clients}}{L_{\sf sub}}+\log_2\left(\frac{\binom{\Delta}{q}}{\binom{\ell}{q}}\right)^{L_{\sf sub}}\leq-\lambda\right\}$.
-- $\frac{\binom{\Delta}{q}}{\binom{\ell}{q}}=\prod_{a=0}^{q-1}\frac{\Delta-a}{\ell-a}$ $\Rightarrow$ $\frac{\Delta-a}{\ell-a}\leq\frac{\Delta}{\ell}$ $\Rightarrow$ $\prod_{a=0}^{q-1}\frac{\Delta-a}{\ell-a}\leq\left(\frac{\Delta}{\ell}\right)^q$ $\Rightarrow$ $\frac{\binom{\Delta}{q}}{\binom{\ell}{q}} \leq \left(\frac{\Delta}{\ell}\right)^q.$
+### Sampling without replacement
 
-- If $q>\Delta$, then $\binom{\Delta}{q}=0$ and the failure probability is $0$ for this worst-case model, so the search always terminates by $q=\Delta+1$.
-- $\log_2\binom{\ell}{\Delta}+\log_2\binom{N_{\sf clients}}{L_{\sf sub}}+qL_{\sf sub}\log_2(\Delta/\ell)\leq-\lambda$
-- $\log_2(\Delta/\ell)<0$ $\Rightarrow$ $\displaystyle q\geq\frac{\lambda+\log_2\binom{\ell}{\Delta}+\log_2\binom{N_{\sf clients}}{L_{\sf sub}}}{L_{\sf sub}\log_2(\ell/\Delta)}$
+Subset-soundness formula: $\nu_{\sf sub}=\binom{\ell}{\Delta}\binom{N_{\sf clients}}{L_{\sf sub}}\left(\frac{\binom{\Delta}{|Q|}}{\binom{\ell}{|Q|}}\right)^{L_{\sf sub}} \leq 2^{-\lambda}$.
 
-Thus we have the minimum opening size:
-$$
-|Q| \geq \left\lceil \frac{\lambda + \log_2\binom{\ell}{\Delta} +\log_2\binom{N_{\sf clients}}{L_{\sf sub}}}{L_{\sf sub}\log_2(\ell/\Delta)} \right\rceil
-$$
+Opening cells formula derivation:
 
-A concrete 128 KiB benchmark-oriented parameter set is:
+- For one fixed bad served set of size $\Delta$, one verifier misses all unavailable columns with probability $p_{\sf bad}(\Delta,\ell,q)=\frac{\binom{\Delta}{q}}{\binom{\ell}{q}}$.
+- Union-bound over the bad served set and the accepting client subset: $\nu_{\sf sub}=\binom{\ell}{\Delta}\binom{N_{\sf clients}}{L_{\sf sub}}\left(p_{\sf bad}(\Delta,\ell,|Q|)\right)^{L_{\sf sub}}$.
+- Therefore $|Q|_{\min}=\min\left\{q\in\{1,\ldots,\ell\}:\log_2\binom{\ell}{\Delta}+\log_2\binom{N_{\sf clients}}{L_{\sf sub}}+L_{\sf sub}\left(\log_2\binom{\Delta}{q}-\log_2\binom{\ell}{q}\right)\leq-\lambda\right\}$.
+- Since $\frac{\binom{\Delta}{q}}{\binom{\ell}{q}}=\prod_{a=0}^{q-1}\frac{\Delta-a}{\ell-a}\leq\left(\frac{\Delta}{\ell}\right)^q$, a conservative closed-form estimate is $\log_2\binom{\ell}{\Delta}+\log_2\binom{N_{\sf clients}}{L_{\sf sub}}+qL_{\sf sub}\log_2(\Delta/\ell)\leq-\lambda$.
+- Thus $\displaystyle |Q|\geq\left\lceil \frac{\lambda + \log_2\binom{\ell}{\Delta} +\log_2\binom{N_{\sf clients}}{L_{\sf sub}}}{L_{\sf sub}\log_2(\ell/\Delta)} \right\rceil$.
+- If $q>\Delta$, then $\binom{\Delta}{q}=0$ and the without-replacement failure probability is $0$ for this worst-case model, so the exact search always terminates by $q=\Delta+1$.
+
+A concrete 128 KiB parameter set with $\epsilon=0.01$ and $2^{-40}$ target is:
 
 | Parameter | Value |
 |---|---:|
@@ -213,10 +205,40 @@ A concrete 128 KiB benchmark-oriented parameter set is:
 | $\ell=m/c$ | $1,024$ |
 | $t=\lceil k/c\rceil$ | $512$ |
 | $\Delta=t-1$ | $511$ |
-| $N_{\sf clients}$ | $1,350$ |
-| $\epsilon$ | $0.1$ |
-| $L_{\sf sub}$ | $135$ |
-| $\lambda$ | $128$ bits |
-| $\|Q\|_{\min}$ | $13$ |
+| $N_{\sf clients}$ | $10,000$ |
+| $\epsilon$ | $0.01$ |
+| $L_{\sf sub}$ | $100$ |
+| $\lambda$ | $40$ bits |
+| $\|Q\|_{\min}$ | $19$ |
 
-For this parameter set, $|Q|=13$ gives $\log_2\nu_{\sf sub}\approx -128.002$, which closely matches the target $2^{-128}$ subset-soundness level.
+For this parameter set, $|Q|=19$ gives $\log_2\nu_{\sf sub}\approx -108.031$, while $|Q|=18$ gives $\log_2\nu_{\sf sub}\approx -5.134$. Thus, $|Q|=19$ can be a suitable choice in this setting.
+
+### Sampling with replacement
+
+Subset-soundness formula: $\nu_{\sf sub}=\binom{\ell}{\Delta}\binom{N_{\sf clients}}{L_{\sf sub}}\left(\frac{\Delta}{\ell}\right)^{|Q|L_{\sf sub}} \leq 2^{-\lambda}$.
+
+Opening cells formula derivation:
+
+- For one fixed bad served set of size $\Delta$, one verifier makes $q$ independent draws with replacement and misses all unavailable columns with probability $p_{\sf bad}(\Delta,\ell,q)=\left(\frac{\Delta}{\ell}\right)^q$.
+- Union-bound over the bad served set and the accepting client subset: $\nu_{\sf sub}=\binom{\ell}{\Delta}\binom{N_{\sf clients}}{L_{\sf sub}}\left(p_{\sf bad}(\Delta,\ell,|Q|)\right)^{L_{\sf sub}}$.
+- Therefore $|Q|_{\min}=\min\left\{q\in\mathbb{Z}_{\geq1}:\log_2\binom{\ell}{\Delta}+\log_2\binom{N_{\sf clients}}{L_{\sf sub}}+qL_{\sf sub}\log_2(\Delta/\ell)\leq-\lambda\right\}$.
+- Since $\log_2(\Delta/\ell)<0$, this gives the closed-form requirement $\displaystyle |Q|\geq\left\lceil \frac{\lambda + \log_2\binom{\ell}{\Delta} +\log_2\binom{N_{\sf clients}}{L_{\sf sub}}}{L_{\sf sub}\log_2(\ell/\Delta)} \right\rceil$.
+
+Using the same 128 KiB parameter set:
+
+| Parameter | Value |
+|---|---:|
+| $m$ | $65,536$ |
+| $k$ | $32,768$ |
+| $\rho$ | $1/2$ |
+| $c$ | $64$ |
+| $\ell=m/c$ | $1,024$ |
+| $t=\lceil k/c\rceil$ | $512$ |
+| $\Delta=t-1$ | $511$ |
+| $N_{\sf clients}$ | $10,000$ |
+| $\epsilon$ | $0.01$ |
+| $L_{\sf sub}$ | $100$ |
+| $\lambda$ | $40$ bits |
+| $\|Q\|_{\min}$ | $19$ |
+
+For this parameter set, $|Q|=19$ gives $\log_2\nu_{\sf sub}\approx -83.398$, while $|Q|=18$ gives $\log_2\nu_{\sf sub}\approx 16.884$. Thus, $|Q|=19$ can be a suitable choice in this setting.

@@ -3,6 +3,8 @@ mod encoding;
 mod hashing;
 mod membership;
 mod protocol;
+pub mod v1;
+pub mod v2;
 
 use std::{
     collections::BTreeMap,

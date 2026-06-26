@@ -87,6 +87,15 @@ impl ParameterProfile {
         whir_log_inv_rate: 1,
     };
 
+    pub const BLOB_128K_14: Self = Self {
+        name: "blob-128k-14",
+        n: 14,
+        m: 65536,
+        k: 32768,
+        c: 64,
+        whir_log_inv_rate: 1,
+    };
+
     pub const BLOB_128K_16: Self = Self {
         name: "blob-128k-16",
         n: 16,
