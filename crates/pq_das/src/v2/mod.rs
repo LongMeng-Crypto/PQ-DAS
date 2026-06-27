@@ -18,6 +18,51 @@ pub const SUBSET_EPSILON_DENOMINATOR: usize = 100;
 pub const SUBSET_SOUNDNESS_BITS: usize = 40;
 pub const V2_OPENED_CELLS: usize = 19;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Relation {
+    Full,
+    RowHashOnly,
+    CellCommitOnly,
+    MembershipOnly,
+}
+
+impl Relation {
+    /// Returns which V2 relation blocks are enabled in the LeanVM guest.
+    pub const fn enabled(self) -> (bool, bool, bool) {
+        match self {
+            Self::Full => (true, true, true),
+            Self::RowHashOnly => (true, false, false),
+            Self::CellCommitOnly => (false, true, false),
+            Self::MembershipOnly => (false, false, true),
+        }
+    }
+
+    /// Returns whether the guest reads public row hashes.
+    pub const fn needs_row_hashes(self) -> bool {
+        matches!(self, Self::Full | Self::RowHashOnly)
+    }
+
+    /// Returns whether the guest reads the public column root.
+    pub const fn needs_root(self) -> bool {
+        matches!(self, Self::Full | Self::CellCommitOnly)
+    }
+
+    /// Returns whether the guest reads the public RS check vector.
+    pub const fn needs_check_vector(self) -> bool {
+        matches!(self, Self::Full | Self::MembershipOnly)
+    }
+
+    /// Returns a stable benchmark label for this relation mode.
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Full => "full",
+            Self::RowHashOnly => "row-hash-only",
+            Self::CellCommitOnly => "cell-commit-only",
+            Self::MembershipOnly => "membership-only",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct AuxiliaryData {
     pub profile: ParameterProfile,
@@ -43,13 +88,16 @@ pub struct BenchmarkTimings {
     pub encode_commit: Duration,
     pub prover_preprocess: Duration,
     pub prove: Duration,
-    pub verifier_rebuild_verify: Duration,
+    pub opening_generation: Duration,
+    pub verifier_rebuild: Duration,
+    pub proof_verify: Duration,
     pub verify_openings: Duration,
     pub reconstruct: Option<Duration>,
 }
 
 #[derive(Clone, Debug)]
 pub struct BenchmarkResult {
+    pub relation: Relation,
     pub profile: ParameterProfile,
     pub commitment: Commitment,
     pub prepared: PreparedStatement,
@@ -101,17 +149,15 @@ fn physical_codewords(profile: ParameterProfile, codewords: Codewords) -> Codewo
         .collect()
 }
 
-/// Reorders the public RS check vector to match V2's even-first physical codeword layout.
-fn physical_check_vector(profile: ParameterProfile, check_vector: &membership::CheckVector) -> membership::CheckVector {
-    (0..profile.m)
-        .map(|index| check_vector[physical_to_logical(profile, index)])
-        .collect()
-}
-
-/// Hashes the contiguous systematic prefix of one V2 physical codeword.
-fn row_hash(profile: ParameterProfile, row: &[F]) -> Digest {
-    debug_assert_eq!(row.len(), profile.m);
-    fixed_compression_hash(&row[..profile.k])
+/// Hashes the systematic cell digests of one row as specified by V2.
+fn row_hash_from_cell_digests(
+    profile: ParameterProfile,
+    n_padded: usize,
+    cell_digests: &[Digest],
+    row: usize,
+) -> Digest {
+    let mut chunks = (0..profile.reconstruction_threshold_cells()).map(|cell| cell_digests[cell * n_padded + row]);
+    compression_chain_from_chunks(&mut chunks)
 }
 
 /// Hashes field data as a fixed-length chain of Poseidon16 compression calls.
@@ -142,19 +188,27 @@ pub fn encode_and_commit(profile: ParameterProfile, data: &Data) -> Result<(Comm
         return Err(DemoError::InvalidDataShape);
     }
     let codewords = physical_codewords(profile, encode(profile, data));
-    let row_hashes = codewords.iter().map(|row| row_hash(profile, row)).collect();
     let n_padded = padded_rows(profile);
     let zero = [F::ZERO; DIGEST_LEN];
-    let mut column_roots = Vec::with_capacity(profile.n_cells());
+    let mut cell_digests = vec![zero; profile.n_cells() * n_padded];
 
     for cell in 0..profile.n_cells() {
         let start = cell * profile.c;
-        let mut leaves = vec![zero; n_padded];
         for row in 0..profile.n {
-            leaves[row] = cell_hash(&codewords[row][start..start + profile.c]);
+            cell_digests[cell * n_padded + row] = cell_hash(&codewords[row][start..start + profile.c]);
         }
-        column_roots.push(merkle_layers(&leaves).last().unwrap()[0]);
     }
+
+    let row_hashes = (0..profile.n)
+        .map(|row| row_hash_from_cell_digests(profile, n_padded, &cell_digests, row))
+        .collect();
+    let column_roots = (0..profile.n_cells())
+        .map(|cell| {
+            merkle_layers(&cell_digests[cell * n_padded..(cell + 1) * n_padded])
+                .last()
+                .unwrap()[0]
+        })
+        .collect::<Vec<_>>();
 
     let outer_merkle_layers = merkle_layers(&column_roots);
     let commitment = Commitment {
@@ -308,16 +362,34 @@ fn log2_binomial(n: usize, k: usize) -> f64 {
     (0..k).map(|i| ((n - i) as f64).log2() - ((i + 1) as f64).log2()).sum()
 }
 
-fn guest_source() -> ProgramSource {
-    ProgramSource::Raw(include_str!("../../zkdsl/v2/main.py").to_string())
+fn guest_source(relation: Relation) -> ProgramSource {
+    let source = match relation {
+        Relation::Full => include_str!("../../zkdsl/v2/full.py"),
+        Relation::RowHashOnly | Relation::CellCommitOnly | Relation::MembershipOnly => {
+            include_str!("../../zkdsl/v2/main.py")
+        }
+    };
+    ProgramSource::Raw(source.to_string())
 }
 
-fn compilation_flags(commitment: &Commitment) -> Result<CompilationFlags, DemoError> {
+fn compilation_flags(commitment: &Commitment, relation: Relation) -> Result<CompilationFlags, DemoError> {
     commitment.profile.validate()?;
     if commitment.row_hashes.len() != commitment.profile.n {
         return Err(DemoError::InvalidDataShape);
     }
     let profile = commitment.profile;
+    let (row_hash_enabled, cell_commit_enabled, membership_enabled) = relation.enabled();
+    let mut read_only_cursor = DIGEST_LEN;
+    let row_hashes_ptr = read_only_cursor;
+    if relation.needs_row_hashes() {
+        read_only_cursor += profile.n * DIGEST_LEN;
+    }
+    let root_ptr = read_only_cursor;
+    if relation.needs_root() {
+        read_only_cursor += DIGEST_LEN;
+    }
+    let check_vector_ptr = read_only_cursor;
+
     let mut replacements = std::collections::BTreeMap::new();
     for (name, value) in [
         ("N_PLACEHOLDER", profile.n),
@@ -327,14 +399,18 @@ fn compilation_flags(commitment: &Commitment) -> Result<CompilationFlags, DemoEr
         ("K_PLACEHOLDER", profile.k),
         ("C_PLACEHOLDER", profile.c),
         ("N_CELLS_PLACEHOLDER", profile.n_cells()),
+        ("SYSTEMATIC_CELLS_PLACEHOLDER", profile.reconstruction_threshold_cells()),
         ("SYSTEMATIC_STRIDE_PLACEHOLDER", profile.systematic_stride()),
         ("ROW_CHUNKS_PLACEHOLDER", profile.k / DIGEST_LEN),
         ("CELL_CHUNKS_PLACEHOLDER", profile.c / DIGEST_LEN),
         ("OUTER_MERKLE_DEPTH_PLACEHOLDER", profile.merkle_depth()),
         ("OUTER_TREE_DIGESTS_PLACEHOLDER", 2 * profile.n_cells() - 1),
-        ("PUBLIC_ROW_HASHES_PTR_PLACEHOLDER", DIGEST_LEN),
-        ("PUBLIC_ROOT_COL_PTR_PLACEHOLDER", DIGEST_LEN + profile.n * DIGEST_LEN),
-        ("CHECK_VECTOR_PTR_PLACEHOLDER", 2 * DIGEST_LEN + profile.n * DIGEST_LEN),
+        ("ROW_HASH_ENABLED_PLACEHOLDER", usize::from(row_hash_enabled)),
+        ("CELL_COMMIT_ENABLED_PLACEHOLDER", usize::from(cell_commit_enabled)),
+        ("MEMBERSHIP_ENABLED_PLACEHOLDER", usize::from(membership_enabled)),
+        ("PUBLIC_ROW_HASHES_PTR_PLACEHOLDER", row_hashes_ptr),
+        ("PUBLIC_ROOT_COL_PTR_PLACEHOLDER", root_ptr),
+        ("CHECK_VECTOR_PTR_PLACEHOLDER", check_vector_ptr),
     ] {
         replacements.insert(name.to_string(), value.to_string());
     }
@@ -363,6 +439,7 @@ fn compilation_flags(commitment: &Commitment) -> Result<CompilationFlags, DemoEr
             offsets.iter().map(usize::to_string).collect::<Vec<_>>().join(",")
         ),
     );
+
     Ok(CompilationFlags { replacements })
 }
 
@@ -370,21 +447,48 @@ fn leanvm_public_input() -> [F; DIGEST_LEN] {
     [F::ZERO; DIGEST_LEN]
 }
 
-fn read_only_data(commitment: &Commitment, check_vector: &membership::CheckVector) -> Vec<F> {
-    let mut data =
-        Vec::with_capacity(commitment.profile.n * DIGEST_LEN + DIGEST_LEN + commitment.profile.m * EXT_DEGREE);
-    data.extend(commitment.row_hashes.iter().flatten().copied());
-    data.extend_from_slice(&commitment.root);
-    data.extend(check_vector.iter().flatten().copied());
+fn read_only_data(commitment: &Commitment, check_vector: &membership::CheckVector, relation: Relation) -> Vec<F> {
+    let mut capacity = 0;
+    if relation.needs_row_hashes() {
+        capacity += commitment.profile.n * DIGEST_LEN;
+    }
+    if relation.needs_root() {
+        capacity += DIGEST_LEN;
+    }
+    if relation.needs_check_vector() {
+        capacity += commitment.profile.m * EXT_DEGREE;
+    }
+
+    let mut data = Vec::with_capacity(capacity);
+    if relation.needs_row_hashes() {
+        data.extend(commitment.row_hashes.iter().flatten().copied());
+    }
+    if relation.needs_root() {
+        data.extend_from_slice(&commitment.root);
+    }
+    if relation.needs_check_vector() {
+        data.extend(check_vector.iter().flatten().copied());
+    }
     data
 }
 
-/// Recomputes V2 Fiat-Shamir data, generates L, and compiles the V2 guest.
+/// Recomputes V2 Fiat-Shamir data, generates physical-order L, and compiles the full V2 guest.
 pub fn prepare_statement(commitment: Commitment) -> Result<PreparedStatement, DemoError> {
-    let logical_check_vector = membership::check_vector(&commitment).ok_or(DemoError::ChallengeOnDomain)?;
-    let check_vector = physical_check_vector(commitment.profile, &logical_check_vector);
-    let bytecode = compile_program_with_flags(&guest_source(), compilation_flags(&commitment)?)
-        .with_read_only_data(read_only_data(&commitment, &check_vector));
+    prepare_statement_with_relation(commitment, Relation::Full)
+}
+
+/// Recomputes V2 Fiat-Shamir data and compiles the selected relation benchmark guest.
+pub fn prepare_statement_with_relation(
+    commitment: Commitment,
+    relation: Relation,
+) -> Result<PreparedStatement, DemoError> {
+    let check_vector = if relation.needs_check_vector() {
+        membership::physical_check_vector(&commitment).ok_or(DemoError::ChallengeOnDomain)?
+    } else {
+        Vec::new()
+    };
+    let bytecode = compile_program_with_flags(&guest_source(relation), compilation_flags(&commitment, relation)?)
+        .with_read_only_data(read_only_data(&commitment, &check_vector, relation));
     Ok(PreparedStatement {
         commitment,
         check_vector,
@@ -418,9 +522,8 @@ pub fn prove_codewords(prepared: &PreparedStatement, codewords: &Codewords) -> R
     Ok(ProofBundle { execution })
 }
 
-/// Rebuilds the verifier's V2 statement and verifies the LeanVM proof.
-pub fn verify_execution_proof(commitment: &Commitment, proof: &ProofBundle) -> Result<(), DemoError> {
-    let prepared = prepare_statement(commitment.clone())?;
+/// Verifies a LeanVM proof against an already rebuilt V2 statement.
+pub fn verify_prepared_execution_proof(prepared: &PreparedStatement, proof: &ProofBundle) -> Result<(), DemoError> {
     verify_execution(
         &prepared.bytecode,
         &leanvm_public_input(),
@@ -428,6 +531,21 @@ pub fn verify_execution_proof(commitment: &Commitment, proof: &ProofBundle) -> R
     )
     .map(|_| ())
     .map_err(DemoError::Verification)
+}
+
+/// Rebuilds the verifier's full V2 statement and verifies the LeanVM proof.
+pub fn verify_execution_proof(commitment: &Commitment, proof: &ProofBundle) -> Result<(), DemoError> {
+    verify_execution_proof_with_relation(commitment, proof, Relation::Full)
+}
+
+/// Rebuilds the verifier's selected V2 relation statement and verifies the LeanVM proof.
+pub fn verify_execution_proof_with_relation(
+    commitment: &Commitment,
+    proof: &ProofBundle,
+    relation: Relation,
+) -> Result<(), DemoError> {
+    let prepared = prepare_statement_with_relation(commitment.clone(), relation)?;
+    verify_prepared_execution_proof(&prepared, proof)
 }
 
 /// Rebuilds the public V2 statement, verifies its proof, and checks openings.

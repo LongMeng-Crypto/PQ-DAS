@@ -10,16 +10,13 @@ K = K_PLACEHOLDER
 C = C_PLACEHOLDER
 N_CELLS = N_CELLS_PLACEHOLDER
 SYSTEMATIC_CELLS = SYSTEMATIC_CELLS_PLACEHOLDER
+SYSTEMATIC_STRIDE = SYSTEMATIC_STRIDE_PLACEHOLDER
 ROW_CHUNKS = ROW_CHUNKS_PLACEHOLDER
 CELL_CHUNKS = CELL_CHUNKS_PLACEHOLDER
 OUTER_MERKLE_DEPTH = OUTER_MERKLE_DEPTH_PLACEHOLDER
 OUTER_TREE_DIGESTS = OUTER_TREE_DIGESTS_PLACEHOLDER
 OUTER_LEVEL_SIZES = OUTER_LEVEL_SIZES_PLACEHOLDER
 OUTER_LEVEL_OFFSETS = OUTER_LEVEL_OFFSETS_PLACEHOLDER
-
-ROW_HASH_ENABLED = ROW_HASH_ENABLED_PLACEHOLDER
-CELL_COMMIT_ENABLED = CELL_COMMIT_ENABLED_PLACEHOLDER
-MEMBERSHIP_ENABLED = MEMBERSHIP_ENABLED_PLACEHOLDER
 
 PUBLIC_ROW_HASHES_PTR = PUBLIC_ROW_HASHES_PTR_PLACEHOLDER
 PUBLIC_ROOT_COL_PTR = PUBLIC_ROOT_COL_PTR_PLACEHOLDER
@@ -85,40 +82,67 @@ def hash_contiguous_chunks(data, num_chunks: Const):
     return out_many
 
 
-# Builds a complete binary Merkle root over a digest array using rolling layers.
+# Builds a complete binary Merkle root over an in-memory digest array.
 def merkle_root_from_digests(leaves, log_num_leaves: Const):
     layer: Mut = leaves
     for level in unroll(1, log_num_leaves + 1):
         layer_size = 2 ** (log_num_leaves - level)
-        next_layer = Array(layer_size * DIGEST_LEN)
-        for node in range(0, layer_size):
+        new_layer = Array(layer_size * DIGEST_LEN)
+        for node in unroll(0, layer_size):
             poseidon16_compress_half(
                 layer + (2 * node) * DIGEST_LEN,
                 layer + (2 * node + 1) * DIGEST_LEN,
-                next_layer + node * DIGEST_LEN,
+                new_layer + node * DIGEST_LEN,
             )
-        layer = next_layer
+        layer = new_layer
     return layer
 
 
-# Proves row digests by first hashing the systematic cells into cell digests.
-def prove_row_hashes(codewords, public_row_hashes):
-    for row in range(0, N):
-        row_base = codewords + row * M
-        systematic_cell_digests = Array(SYSTEMATIC_CELLS * DIGEST_LEN)
-        for cell in range(0, SYSTEMATIC_CELLS):
-            digest = hash_contiguous_chunks(row_base + cell * C, CELL_CHUNKS)
-            copy_digest(digest, systematic_cell_digests + cell * DIGEST_LEN)
-        row_digest = hash_contiguous_chunks(systematic_cell_digests, SYSTEMATIC_CELLS)
-        for i in unroll(0, DIGEST_LEN):
-            assert row_digest[i] == public_row_hashes[row * DIGEST_LEN + i]
-    return
+# Hashes the first t systematic cell digests for one row.
+def hash_systematic_cell_digests(cell_digests, row):
+    if SYSTEMATIC_CELLS == 1:
+        out_one = Array(DIGEST_LEN)
+        poseidon16_compress_half(zero_digest_ret(), cell_digests + row * DIGEST_LEN, out_one)
+        return out_one
+    if SYSTEMATIC_CELLS == 2:
+        out_two = Array(DIGEST_LEN)
+        poseidon16_compress_half(
+            cell_digests + row * DIGEST_LEN,
+            cell_digests + (N_PADDED + row) * DIGEST_LEN,
+            out_two,
+        )
+        return out_two
+
+    states = Array((SYSTEMATIC_CELLS - 2) * DIGEST_LEN)
+    poseidon16_compress_half(
+        cell_digests + row * DIGEST_LEN,
+        cell_digests + (N_PADDED + row) * DIGEST_LEN,
+        states,
+    )
+    for cell in range(1, SYSTEMATIC_CELLS - 2):
+        poseidon16_compress_half(
+            states + (cell - 1) * DIGEST_LEN,
+            cell_digests + ((cell + 1) * N_PADDED + row) * DIGEST_LEN,
+            states + cell * DIGEST_LEN,
+        )
+    out_many = Array(DIGEST_LEN)
+    poseidon16_compress_half(
+        states + (SYSTEMATIC_CELLS - 3) * DIGEST_LEN,
+        cell_digests + ((SYSTEMATIC_CELLS - 1) * N_PADDED + row) * DIGEST_LEN,
+        out_many,
+    )
+    return out_many
 
 
-# Proves the V2 cell-digest column Merkle roots and the outer column-root tree.
-def prove_cell_commitment(codewords, public_root_col):
-    # LeanVM currently handles one static column-major scratch matrix better than
-    # allocating a per-column leaves array inside the dynamic cell loop.
+# Proves V2's cell-first commitment, public row digests, column root, and RS checks.
+def main():
+    codewords = Array(N * M)
+    hint_witness("codewords", codewords)
+    public_row_hashes = PUBLIC_ROW_HASHES_PTR
+    public_root_col = PUBLIC_ROOT_COL_PTR
+    check_vector = CHECK_VECTOR_PTR
+
+    # Cell digests are stored column-major so every column's Merkle leaves are contiguous.
     cell_digests = Array(N_CELLS * N_PADDED * DIGEST_LEN)
 
     for row in range(0, N):
@@ -126,6 +150,11 @@ def prove_cell_commitment(codewords, public_root_col):
         for cell in range(0, N_CELLS):
             digest = hash_contiguous_chunks(row_base + cell * C, CELL_CHUNKS)
             copy_digest(digest, cell_digests + (cell * N_PADDED + row) * DIGEST_LEN)
+
+    for row in range(0, N):
+        row_digest = hash_systematic_cell_digests(cell_digests, row)
+        for i in unroll(0, DIGEST_LEN):
+            assert row_digest[i] == public_row_hashes[row * DIGEST_LEN + i]
 
     for cell in range(0, N_CELLS):
         for row in unroll(N, N_PADDED):
@@ -153,30 +182,9 @@ def prove_cell_commitment(codewords, public_root_col):
     root_offset = OUTER_LEVEL_OFFSETS[OUTER_MERKLE_DEPTH] * DIGEST_LEN
     for i in unroll(0, DIGEST_LEN):
         assert outer_tree[root_offset + i] == public_root_col[i]
-    return
 
-
-# Proves RS membership with one length-m dot product over the even-first physical layout.
-def prove_membership(codewords, check_vector):
     for row in range(0, N):
         result = Array(DIM)
         dot_product_be(codewords + row * M, check_vector, result, M)
         assert_ext_zero(result)
-    return
-
-
-# Proves the selected V2 LeanVM relation over the physical codeword matrix.
-def main():
-    codewords = Array(N * M)
-    hint_witness("codewords", codewords)
-    public_row_hashes = PUBLIC_ROW_HASHES_PTR
-    public_root_col = PUBLIC_ROOT_COL_PTR
-    check_vector = CHECK_VECTOR_PTR
-
-    if ROW_HASH_ENABLED == 1:
-        prove_row_hashes(codewords, public_row_hashes)
-    if CELL_COMMIT_ENABLED == 1:
-        prove_cell_commitment(codewords, public_root_col)
-    if MEMBERSHIP_ENABLED == 1:
-        prove_membership(codewords, check_vector)
     return

@@ -20,8 +20,18 @@ pub fn challenge(commitment: &Commitment) -> EF {
     ext_from_digest(&crate::hashing::fiat_shamir_digest(commitment))
 }
 
-/// Computes the public half-rate special-barycentric check vector.
+/// Computes the public half-rate special-barycentric check vector in logical FFT-domain order.
 pub fn check_vector(commitment: &Commitment) -> Option<CheckVector> {
+    check_vector_with_layout(commitment, false)
+}
+
+/// Computes the public check vector in V2's even-first physical codeword order.
+pub fn physical_check_vector(commitment: &Commitment) -> Option<CheckVector> {
+    check_vector_with_layout(commitment, true)
+}
+
+/// Computes the special-barycentric check vector in either logical or V2 physical order.
+fn check_vector_with_layout(commitment: &Commitment, physical_order: bool) -> Option<CheckVector> {
     let profile = commitment.profile;
     let omega = F::two_adic_generator(profile.m.ilog2() as usize);
     let omega_sq = omega.square();
@@ -50,8 +60,10 @@ pub fn check_vector(commitment: &Commitment) -> Option<CheckVector> {
 
     let mut vector = vec![[F::ZERO; EXT_DEGREE]; profile.m];
     for (r, x) in xs.into_iter().enumerate() {
-        vector[2 * r] = coeffs(common_p * EF::from(x) * denominator_inverses[2 * r]);
-        vector[2 * r + 1] = coeffs(-(common_q * EF::from(x) * denominator_inverses[2 * r + 1]));
+        let even_index = if physical_order { r } else { 2 * r };
+        let odd_index = if physical_order { profile.k + r } else { 2 * r + 1 };
+        vector[even_index] = coeffs(common_p * EF::from(x) * denominator_inverses[2 * r]);
+        vector[odd_index] = coeffs(-(common_q * EF::from(x) * denominator_inverses[2 * r + 1]));
     }
     Some(vector)
 }

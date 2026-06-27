@@ -5,6 +5,7 @@ mod membership;
 mod protocol;
 pub mod v1;
 pub mod v2;
+pub mod v2_ext;
 
 use std::{
     collections::BTreeMap,
