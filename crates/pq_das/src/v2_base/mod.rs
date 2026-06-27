@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, time::Duration};
 
-use backend::{ArenaVec, PrimeCharacteristicRing, arena_vec, poseidon16_compress_pair};
+use backend::{ArenaVec, PrimeCharacteristicRing, PrimeField32, arena_vec, poseidon16_compress_pair};
 use lean_compiler::{CompilationFlags, ProgramSource, compile_program_with_flags};
 use lean_prover::{default_whir_config, prove_execution::prove_execution, verify_execution::verify_execution};
 use lean_vm::{Bytecode, ExecutionWitness, F, Hints};
@@ -227,6 +227,41 @@ pub fn encode_and_commit(profile: ParameterProfile, data: &Data) -> Result<(Comm
     ))
 }
 
+/// Samples distinct cell-column indices from the public commitment root and external randomness.
+pub fn sample_query_indices(
+    commitment: &Commitment,
+    randomness: &[F; DIGEST_LEN],
+    count: usize,
+) -> Result<Vec<usize>, DemoError> {
+    if count > commitment.profile.n_cells() {
+        return Err(DemoError::InvalidQuery);
+    }
+    let mut indices = Vec::with_capacity(count);
+    let mut seen = BTreeSet::new();
+    let mut counter = 0u32;
+    while indices.len() < count {
+        let mut block = *randomness;
+        block[0] += F::from_u32(counter);
+        let digest = poseidon16_compress_pair(&commitment.root, &block);
+        for word in digest {
+            let index = word.as_canonical_u32() as usize % commitment.profile.n_cells();
+            if seen.insert(index) {
+                indices.push(index);
+                if indices.len() == count {
+                    break;
+                }
+            }
+        }
+        counter = counter.wrapping_add(1);
+    }
+    Ok(indices)
+}
+
+/// Returns the canonical byte size of the public V2-base commitment.
+pub fn commitment_size_bytes(commitment: &Commitment) -> usize {
+    (commitment.row_hashes.len() * DIGEST_LEN + DIGEST_LEN) * size_of::<u32>()
+}
+
 /// Opens requested cell columns and attaches only the outer column-root Merkle paths.
 pub fn query(aux: &AuxiliaryData, indices: &[usize]) -> Result<Transcript, DemoError> {
     let profile = aux.profile;
@@ -364,9 +399,9 @@ fn log2_binomial(n: usize, k: usize) -> f64 {
 
 fn guest_source(relation: Relation) -> ProgramSource {
     let source = match relation {
-        Relation::Full => include_str!("../../zkdsl/v2/full.py"),
+        Relation::Full => include_str!("../../zkdsl/v2_base/full.py"),
         Relation::RowHashOnly | Relation::CellCommitOnly | Relation::MembershipOnly => {
-            include_str!("../../zkdsl/v2/main.py")
+            include_str!("../../zkdsl/v2_base/main.py")
         }
     };
     ProgramSource::Raw(source.to_string())

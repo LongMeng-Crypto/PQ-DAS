@@ -1,252 +1,70 @@
-# PQ-DAS V1 LeanVM Demo
+# PQ-DAS V2 LeanVM Demo
 
-## Construction Algorithms and Code Mapping
+This branch contains only the current PQ-DAS V2 demo implementations:
 
-- **Setup**
-  - There is no standalone `setup()` function because this demo uses transparent LeanVM/WHIR parameters and compile-time profile constants.
-  - `ParameterProfile::{TINY, MEDIUM, LARGE, STRESS, BLOB_128K_1, BLOB_128K_4, BLOB_128K_16}` defines $n$, $m$, $k$, $c$, and the WHIR inverse-rate exponent.
-  - `ParameterProfile::validate()` checks the current implementation constraints: $m=2k$, power-of-two FFT and Merkle domains, $c\mid m$, KoalaBear two-adicity, and Poseidon rate alignment.
-  - `ParameterProfile::profile_block()` and `fs_block()` provide the public domain-separated field encodings used by Fiat-Shamir.
-  - `compilation_flags()` specializes the compact zkDSL program to the selected profile, while `default_whir_config()` selects the LeanVM proving parameters.
+- `v2_base`: base-field blobs. A 128 KiB blob is represented as $32768$ KoalaBear elements. RS membership uses `dot_product_be` with a public extension-field check vector $L$.
+- `v2_ext`: extension-field blobs. A blob follows the Tau-style size of $8192$ quintic-extension elements, serialized as five KoalaBear coordinates per symbol. RS membership uses the extension-field path over the shorter codeword.
 
-- **Encoding / Commitment algorithm $\mathsf{Com}({\sf pp},{\sf data})$**
-  - `commit()` is the complete convenience entry point.
-  - `commit()` calls `encode_and_commit()` to construct the codewords and public commitment.
-    - `encode_and_commit()` calls `encode()`.
-    - `encode()` calls `encode_blob()` once for every input blob.
-    - `encode_blob()` calls `ifft()` on the size-$k$ systematic subgroup, zero-pads the coefficients to length $m$, and calls `fft()` on the size-$m$ domain.
-    - `encode_and_commit()` calls `row_hash()` for every row, `column_hash()` for every cell column, and `merkle_layers()` to construct the binary Poseidon tree and ${\sf root}$.
-  - `commit()` then calls `prepare_statement()`.
-    - `prepare_statement()` calls `check_vector()`.
-    - `check_vector()` calls `challenge()`, which calls `fiat_shamir_digest()`.
-    - `prepare_statement()` compiles the profile-specific guest once and attaches the public row hashes, ${\sf root}$, and $L$ vector as read-only LeanVM data.
-  - `commit()` finally calls `prove_codewords()`, which packages only the codeword matrix as the private witness and invokes LeanVM `prove_execution()`.
+The V1 implementation is intentionally not present on this branch. It is preserved separately on the `V1-Demo` branch.
 
-- **First verifier / query algorithm $\mathsf{V}_1({\sf com})$**
-  - `ParameterProfile::sampling_count()` computes the minimum distinct-cell sample count matching LeanVM's current $124$-bit WHIR security target.
-  - `sample_query_indices()` expands external randomness and the commitment ${\sf root}$ through Poseidon, uses rejection sampling to avoid modulo bias, and derives that many distinct cell-column indices.
-  - `query()` receives one or more selected indices, extracts $W_{1,j},\ldots,W_{n,j}$ from the codeword matrix, and obtains the sibling digest at every Merkle level from the stored `merkle_layers`.
-  - `query()` returns a `Transcript` containing each queried column of cells and its authentication path.
+## V2-base Workflow
 
-- **Second verifier algorithm $\mathsf{V}_2({\sf com},{\sf tran})$**
-  - `verify()` is the combined entry point.
-  - `verify()` first calls `verify_execution_proof()` with only the public `Commitment` and proof.
-    - `verify_execution_proof()` calls `prepare_statement()` independently on the verifier side.
-    - `prepare_statement()` recomputes Fiat–Shamir, $p$, $q$, every $L_j$, and the read-only public-data segment from the public profile, row hashes, and ${\sf root}$.
-    - It then invokes LeanVM `verify_execution()` with the independently reconstructed bytecode.
-  - `verify()` then calls `verify_openings()`.
-    - `verify_openings()` recomputes each queried `column_hash`.
-    - It folds the authentication path with `poseidon16_compress_pair()`.
-    - It accepts only if every reconstructed root equals the public commitment ${\sf root}$.
+- `v2_base::encode_and_commit()` encodes each blob, reorders codewords into physical systematic-prefix layout, hashes every cell inside the codeword matrix, hashes systematic cell digests into row hashes, and builds the two-level column Merkle commitment.
+- `v2_base::prepare_statement_with_relation()` recomputes Fiat-Shamir and the public $L$ vector from the public commitment, then compiles the selected LeanVM guest with row hashes, the column root, and $L$ in read-only memory.
+- `v2_base::prove_codewords()` proves the selected relation. The full relation proves cell digest computation, row digest checks, column Merkle root computation, and RS membership.
+- `v2_base::query()` opens sampled cell columns and returns the cells plus outer column-root authentication paths.
+- `v2_base::verify_openings()` recomputes opened cell digests, inner column roots, and outer Merkle paths against the public column root.
+- `v2_base::reconstruct()` supports arbitrary verified cell erasure patterns using the shared FFT-based erasure decoder.
 
-- **Reconstruction algorithm $\mathsf{Ext}({\sf com},{\sf tran}_1,\ldots,{\sf tran}_L)$**
-  - `reconstruct()` calls `verify_openings()` on every supplied transcript.
-  - It unions openings by cell index and requires at least $\lceil k/c\rceil$ distinct cells.
-  - It expands the accepted cells into arbitrary indexed RS evaluations and constructs one shared `ErasureDecoder` for their erasure pattern.
-  - `ErasureDecoder::new()` constructs the erasure locator polynomial $Z(X)$ with an FFT subproduct tree, evaluates $Z$ over the size-$m$ domain, and prepares the reversed-polynomial inverse used for exact division.
-  - For each row, `ErasureDecoder::reconstruct_blob()` forms the complete evaluation vector of $N(X)=f(X)Z(X)$, applies a size-$m$ IFFT, divides $N(X)$ by $Z(X)$ using the prepared Newton inverse, and applies a size-$k$ FFT to recover the systematic even-position values.
-  - The locator preparation is shared by every row. It costs $O(M(m)\log m)$ for arbitrary erasures, where $M(m)$ is polynomial-multiplication cost; with the current radix-2 FFT multiplier this is $O(m\log^2m)$. Each row then costs $O(m\log m)$.
+## V2-ext Workflow
 
-## Current Demo Instantiation
+- `v2_ext::encode_and_commit()` follows the same V2 commitment layout, but blobs and codewords are quintic-extension elements.
+- `v2_ext::prepare_statement()` independently derives the public extension-field $L$ vector on prover and verifier sides.
+- `v2_ext::prove_codewords()` proves the full V2 relation for extension-field codewords.
+- `v2_ext::query()`, `v2_ext::verify_openings()`, and `v2_ext::reconstruct()` mirror the V2-base APIs for extension-field cells.
 
-- **Blob definition:** `Blob = Vec<F>`, where `F` is the KoalaBear base-field type. One blob is exactly $k$ canonical KoalaBear elements, and `Data = Vec<Blob>` contains $n$ blobs. The 128 KiB profiles use $k=32768$, which occupies 128 KiB when each canonical field element is serialized in four bytes. This is a field-native format, not yet an injective packing of an arbitrary 128 KiB byte string.
+## Current Benchmark Commands
 
-- **Fields used by the demo:**
-  - **KoalaBear base field $\mathbb{F}$:** represented by `lean_vm::F`. Blob symbols, RS coefficients and evaluations, FFT arithmetic, Poseidon inputs and digests, Merkle nodes, VM memory, and the five coordinates used to serialize extension elements all live in $\mathbb{F}$.
-  - **Quintic extension field $\mathbb{E}=\mathbb{F}[X]/(f(X))$:** represented by `lean_vm::EF`. It is used for the Fiat–Shamir challenge $p$, the derived point $q=p/\omega$, the coefficients $L_j$, and the RS membership inner product. Since $[\mathbb{E}:\mathbb{F}]=5$, one extension element is represented by five KoalaBear coordinates.
-  - **WHIR/STARK arithmetic:** LeanVM's execution proof is ultimately arithmetized over the same KoalaBear base field, while extension-field values used by the proof system and `dot_product_be()` are represented through their five base-field coordinates. The demo does not introduce a third application-level RS field.
+Run all V2-base benchmarks:
 
-- **RS encoding and systematic data:** the evaluation domain is
-  $\mathsf{U}=\{1,\omega,\ldots,\omega^{m-1}\}$ over KoalaBear. The current special-barycentric implementation requires $m=2k$. `encode_blob()` interprets the input blob as evaluations on the size-$k$ subgroup generated by $\omega^2$, applies a size-$k$ IFFT, zero-pads the coefficient vector, and applies a size-$m$ FFT. Therefore the original blob values appear at the even codeword positions:
-  $$
-  w_{i\cdot(m/k)}=w_{2i}={\sf blob}_i.
-  $$
+```bash
+cargo run --release -p pq_das -- --version v2_base --all-v2-base-benchmarks --v2-relation full
+```
 
-- **Cell definition:** one row is divided into $\ell=m/c$ cells. Cell $W_{i,j}$ contains the $c$ consecutive values
-  $$
-  W_{i,j}=(w_{i,jc},\ldots,w_{i,(j+1)c-1}).
-  $$
-  A queried cell column contains the cells with the same index from all $n$ rows. The reconstruction threshold is $t=\lceil k/c\rceil$ distinct cell columns because they contain at least $k$ codeword evaluations per row.
+The old alias still works:
 
-- **Arbitrary-cell reconstruction:** reconstruction accepts any verified set of at least $t$ distinct cells; the selected cells do not need to contain the systematic even positions or form an FFT subgroup. Let $S\subseteq[0,m-1]$ be the available symbol indices and let
-  $$
-  Z(X)=\prod_{j\notin S}(X-\omega^j)
-  $$
-  be the erasure locator. For each row polynomial $f(X)$, the decoder constructs the complete size-$m$ evaluation vector of
-  $$
-  N(X)=f(X)Z(X).
-  $$
-  At every available position $j\in S$, it sets $N(\omega^j)=w_jZ(\omega^j)$; at every erased position, $Z(\omega^j)=0$, so $N(\omega^j)=0$ is known without knowing $w_j$. A size-$m$ IFFT recovers the coefficients of $N$, fast exact division by $Z$ recovers the coefficients of $f$, and a size-$k$ FFT over the subgroup generated by $\omega^2$ returns
-  $$
-  \bigl(f(1),f(\omega^2),\ldots,f(\omega^{2(k-1)})\bigr),
-  $$
-  which is exactly the original systematic blob. `ErasureDecoder::new()` prepares $Z$, its domain evaluations, and the Newton division inverse once for the shared cell pattern; `ErasureDecoder::reconstruct_blob()` reuses them for every row.
+```bash
+cargo run --release -p pq_das -- --version v2 --all-v2-benchmarks --v2-relation full
+```
 
-- **Row hash:** `row_hash()` gathers the $k$ systematic positions $w_{i,2r}$ and computes
-  $$
-  h_i=\mathsf{PoseidonHash}(w_{i,0},w_{i,2},\ldots,w_{i,2k-2}).
-  $$
-  The output $h_i$ is an eight-KoalaBear-element digest.
+Run all V2-ext benchmarks:
 
-- **Column hash and Merkle tree:** `column_hash()` computes
-  $$
-  d_j=\mathsf{PoseidonHash}(W_{1,j}\parallel\cdots\parallel W_{n,j})
-  $$
-  over $n\cdot c$ KoalaBear elements using the Poseidon width-16, rate-8 sponge. These $\ell$ digests are the leaves of a complete binary tree; every internal node is `poseidon16_compress_pair(left, right)`, and the final digest is the public ${\sf root}$.
+```bash
+cargo run --release -p pq_das -- --version v2_ext --all-v2-ext-benchmarks
+```
 
-- **LeanVM public statement and witness:** on the prover side, `PreparedStatement` contains the public `Commitment`, the derived RS check vector $L$, and the compiled bytecode. The prover sends the public `Commitment` and proof, but does not send $L$ as a trusted verifier input. The verifier independently reconstructs an equivalent `PreparedStatement`. In both instances, the row hashes, ${\sf root}$, and derived $L$ are stored in a read-only public-data segment bound by both the bytecode hash and the public-memory polynomial. The private `ExecutionWitness` contains only the flattened $n\times m$ codeword matrix.
+Run one V2-base relation-isolation benchmark:
 
-- **LeanVM proof relation:** the zkDSL `main()` proves exactly three classes of constraints:
-  1. for every row, recompute the systematic Poseidon hash and equate it to the public $h_i$;
-  2. recompute every column hash and the complete binary Poseidon tree, then equate the result to the public ${\sf root}$;
-  3. for every row, execute `dot_product_be(w_i, L)` and constrain all five quintic-extension coordinates of the result to zero:
-     $$
-     \langle w_i,L\rangle=\sum_{j=0}^{m-1}w_{i,j}L_j=0\in\mathbb{E}.
-     $$
+```bash
+cargo run --release -p pq_das -- --version v2_base --profile blob-128k-16 --v2-relation row-hash-only
+cargo run --release -p pq_das -- --version v2_base --profile blob-128k-16 --v2-relation cell-commit-only
+cargo run --release -p pq_das -- --version v2_base --profile blob-128k-16 --v2-relation membership-only
+```
 
-- **Fiat–Shamir and $L$ computation outside the proof:** `fiat_shamir_digest()` hashes the RS domain separator, encoded profile, all row hashes, and the Merkle ${\sf root}$. The first five digest coordinates define $p\in\mathbb{E}$, and $q=p/\omega$. For $x_r=(\omega^2)^r$, the implementation computes
-  $$
-  L_{2r}=\frac{p^k-1}{k}\cdot\frac{x_r}{p-x_r},
-  \qquad
-  L_{2r+1}=-\frac{q^k-1}{k}\cdot\frac{x_r}{q-x_r}.
-  $$
-  Montgomery batch inversion replaces the $2k$ individual extension-field inversions with one inversion and $O(k)$ multiplications. For nonzero denominators $a_1,\ldots,a_N$, it computes prefix products $P_i=\prod_{j=1}^{i}a_j$, inverts only $P_N$, and walks backward using
-  $$
-  a_i^{-1}=P_{i-1}\cdot P_N^{-1}\cdot\prod_{j=i+1}^{N}a_j,
-  $$
-  updating the suffix inverse at each step. Thus every $a_i^{-1}$ is recovered with multiplications after one inversion. The resulting $L$ is generated once during each party's statement preparation and reused throughout that party's proof or verification workflow.
-  The verifier is required to call `prepare_statement(commitment)` independently. Consequently, it recomputes the Fiat–Shamir digest, $p$, $q$, all denominator inverses, and every $L_j$ from the public profile, row hashes, and ${\sf root}$ before LeanVM proof verification. A prover-supplied incorrect challenge or $L$ therefore produces bytecode that differs from the verifier's bytecode and cannot verify.
+Run one V2-ext profile:
 
-- **RS membership computation inside the proof:** for each row, LeanVM's extension-field precompile computes
-  $$
-  \sum_{j=0}^{m-1}w_{i,j}L_j.
-  $$
-  Since $L_j$ has five KoalaBear coordinates, `dot_product_be()` returns one quintic-extension element. `assert_ext_zero()` constrains all five coordinates to zero. No Fiat–Shamir hashing, challenge derivation, denominator inversion, or $L$ construction occurs inside the proof.
+```bash
+cargo run --release -p pq_das -- --version v2_ext --profile blob-ext-1
+```
 
-## Benchmark Parameter Sets
-
-| Dataset | Base field $\mathbb{F}$ | Challenge field $\mathbb{E}$ | Hash | $\rho$ | Membership | WHIR $\log(1/{\rm rate})$ | $n$ | $m$ | $k$ | $c$ | $\ell=m/c$ | $t=k/c$ | Input size | Encoded size |
-| --- | --- | --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `tiny` | KoalaBear | Quintic extension | Poseidon-16/8 | $1/2$ | Special barycentric | 1 | 2 | 16 | 8 | 8 | 2 | 1 | 64 B | 128 B |
-| `medium` | KoalaBear | Quintic extension | Poseidon-16/8 | $1/2$ | Special barycentric | 1 | 8 | 256 | 128 | 8 | 32 | 16 | 4 KiB | 8 KiB |
-| `large` | KoalaBear | Quintic extension | Poseidon-16/8 | $1/2$ | Special barycentric | 1 | 16 | 1,024 | 512 | 8 | 128 | 64 | 32 KiB | 64 KiB |
-| `stress` | KoalaBear | Quintic extension | Poseidon-16/8 | $1/2$ | Special barycentric | 1 | 32 | 4,096 | 2,048 | 8 | 512 | 256 | 256 KiB | 512 KiB |
-| `blob-128k-1` | KoalaBear | Quintic extension | Poseidon-16/8 | $1/2$ | Special barycentric | 1 | 1 | 65,536 | 32,768 | 64 | 1,024 | 512 | 128 KiB | 256 KiB |
-| `blob-128k-4` | KoalaBear | Quintic extension | Poseidon-16/8 | $1/2$ | Special barycentric | 1 | 4 | 65,536 | 32,768 | 64 | 1,024 | 512 | 512 KiB | 1 MiB |
-
-Sizes use the four-byte canonical serialization of one KoalaBear element.
-
-## Benchmark Results
-
-All six proofs were accepted and all six profiles completed reconstruction from an independently sampled arbitrary set of exactly $t$ cells. LeanVM currently configures WHIR for $124$-bit security, so sampling uses the minimum per-transcript number of distinct cells satisfying the formal worst-case sampler-quality bound:
-$$
-\nu_{\mathrm{wor}}(\Delta,N,Q,T)
-=\binom{N}{\Delta}
-\left(\frac{\binom{\Delta}{Q}}{\binom{N}{Q}}\right)^T
-\le 2^{-124},
-$$
-where $N=\ell=m/c$, $\Delta=t-1$, $Q$ is the opened-cell count per transcript, and this benchmark uses $T=128$ accepting transcripts. Raising only the sampling target above $124$ bits would not raise the end-to-end demo security while WHIR remains configured for $124$ bits.
-
-| Dataset | Bytecode instructions | Read-only elements | Opened cells $q$ | Commitment size (KB) | Proof size (KB) | Sample size (KB) | Encode + commit | Prover preprocess | LeanVM prove | Verifier rebuild + LeanVM verify | Verify openings | Reconstruct | Result |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `tiny` | 512 | 104 | 1 | 0.094 | 174.410 | 0.098 | 0.000s | 0.006s | 0.030s | 0.027s | 0.000s | 0.000s | Correct |
-| `medium` | 512 | 1,352 | 2 | 0.281 | 245.266 | 0.820 | 0.001s | 0.005s | 0.169s | 0.034s | 0.000s | 0.001s | Correct |
-| `large` | 1,024 | 5,256 | 2 | 0.531 | 292.426 | 1.445 | 0.006s | 0.010s | 1.112s | 0.043s | 0.000s | 0.004s | Correct |
-| `stress` | 1,024 | 20,744 | 5 | 1.031 | 358.602 | 6.426 | 0.047s | 0.014s | 9.327s | 0.056s | 0.000s | 0.029s | Correct |
-| `blob-128k-1` | 1,024 | 327,696 | 9 | 0.062 | 339.949 | 5.098 | 0.026s | 0.083s | 4.589s | 0.125s | 0.000s | 0.070s | Correct |
-| `blob-128k-4` | 1,024 | 327,720 | 9 | 0.156 | 380.371 | 11.848 | 0.095s | 0.083s | 18.948s | 0.124s | 0.001s | 0.111s | Correct |
-
-Size columns use $1\,\mathrm{KB}=1024$ bytes. The benchmark columns measure the following:
-
-- **Bytecode instructions:** the number of LeanVM instructions in the compiled, profile-specific zkDSL program after padding to the bytecode domain. Public row hashes, ${\sf root}$, and $L$ are not expanded into assignment instructions, so increasing $m$ mainly enlarges the read-only segment rather than the instruction count.
-
-- **Read-only elements:** the number of KoalaBear elements stored in LeanVM's statement-bound read-only segment. It contains all $n$ row-hash digests, the Merkle ${\sf root}$, and the $m$ extension-field coefficients of $L$, each represented by five base-field coordinates:
-  $$
-  8n+8+5m.
-  $$
-
-- **Opened cells $q$:** the minimum number of distinct random cell columns needed to make the worst-case availability false-accept probability at most $2^{-124}$, matching LeanVM's current WHIR setting. This is a DAS sampling count, not the reconstruction threshold $t$. Each opening contains the corresponding cell from every row and a Merkle authentication path.
-
-- **Commitment size:** the size in KB of the canonical four-byte field serialization of the construction commitment $\{h_i\}_{i=1}^{n}$ and ${\sf root}$:
-  $$
-  (n+1)\cdot 8\cdot 4\ \text{bytes}.
-  $$
-  The profile ${\sf pp}$ is assumed to be agreed public metadata and is not counted again.
-
-- **Proof size:** `proof_size_fe()` reported by the LeanVM/WHIR proof, multiplied by four bytes per canonically serialized KoalaBear element and converted to KB. This measures the cryptographic execution proof only; it excludes the commitment and sampled cell openings.
-
-- **Sample size:** the canonical wire size in KB of the benchmark `Transcript`. For each of the $q$ openings it counts one four-byte cell index, $n\cdot c$ four-byte field elements, and $\log_2\ell$ sibling digests of eight field elements:
-  $$
-  q\left(4+4nc+32\log_2\ell\right)\ \text{bytes}.
-  $$
-
-- **Encode + commit:** host time for `encode_and_commit()`. It includes RS encoding of all $n$ blobs, computation of every row hash, computation of all column hashes, and construction of the complete Poseidon Merkle tree. It does not include Fiat–Shamir, $L$ generation, bytecode compilation, or LeanVM proving.
-
-- **Prover preprocess:** host time for the prover's `prepare_statement()`. Starting from the public `Commitment`, it computes the Fiat–Shamir digest, derives $p$ and $q$, constructs $L$ using batch inversion, compiles the compact profile-specific zkDSL program, and attaches the row hashes, ${\sf root}$, and $L$ as read-only public data. It does not execute or prove the LeanVM program.
-
-- **LeanVM prove:** time spent in `prove_codewords()` after encoding, commitment construction, Fiat–Shamir, $L$ generation, and bytecode compilation have finished. It includes witness packaging, execution of the zkDSL program, execution-trace construction, and generation of the LeanVM/WHIR proof for the row-hash, Merkle-root, and RS inner-product relations.
-
-- **Verifier rebuild + LeanVM verify:** total verifier time for `verify_execution_proof()`. The verifier first runs its own `prepare_statement(commitment)`, independently recomputing Fiat–Shamir, $p$, $q$, all $L_j$, the read-only segment, and the expected bytecode. It then invokes LeanVM `verify_execution()` on the proof. This column therefore includes both public $L$ validation by reconstruction and cryptographic proof verification, but excludes Merkle opening verification.
-
-- **Verify openings:** host time for `verify_openings()`. It recomputes the Poseidon column digest for every opened cell column and verifies every Merkle authentication path against the public ${\sf root}$. It does not include LeanVM proof verification or RS reconstruction.
-
-- **Reconstruct:** total time for `reconstruct()`, including re-verification of the $t$ reconstruction openings, one shared arbitrary-erasure locator preparation, and recovery of all $n$ rows through numerator IFFT, fast exact division, and systematic-domain FFT.
-
-- **Result:** whether the reconstructed blobs exactly equal the original input blobs.
-
-## Implemented Engineering Optimizations
-
-- The prover's `PreparedStatement` caches the commitment, its single generated $L$ vector, and compiled bytecode for proving.
-- The verifier accepts only the public `Commitment` and proof, then independently recomputes Fiat–Shamir, $p$, $q$, $L$, and the bound bytecode before proof verification.
-- LeanVM has a read-only public-data segment for row hashes, ${\sf root}$, and $L$. It is immutable, included in the bytecode hash, and constrained by the public-memory polynomial.
-- Public constants are no longer expanded into hundreds of thousands of VM assignment instructions.
-- Within each party, $L$ is computed once and reused instead of being regenerated per row. The verifier's copy is independently derived rather than received from the prover.
-- Availability sampling derives distinct Poseidon-based indices and computes the minimum count for a $124$-bit worst-case hypergeometric bound matching LeanVM instead of opening the reconstruction threshold by default.
-- Montgomery batch inversion reduces $L$ generation from $2k$ extension-field inversions to one inversion plus linear-many multiplications.
-- Poseidon sponge absorption uses runtime loops, keeping bytecode size nearly constant as $k$ and $m$ grow.
-- RS encoding uses radix-2 IFFT/FFT rather than quadratic Lagrange evaluation.
-- Arbitrary-cell reconstruction replaces quadratic barycentric interpolation with a shared FFT subproduct-tree erasure locator, Newton exact division, and FFT recovery. Locator preparation is reused across every row.
-- RS membership inside LeanVM uses the optimized `dot_product_be` extension-field precompile.
-- Benchmark timing is separated into encoding/commitment, prover preprocessing, proving, verifier statement reconstruction plus proof verification, and opening verification. Commitment, proof, and sample sizes are reported separately.
-
-## Running Commands
-
-Run correctness tests:
+Run tests:
 
 ```bash
 cargo test --release -p pq_das -- --nocapture
 ```
 
-Run the six benchmark datasets:
+## Notes
 
-```bash
-cargo run --release -p pq_das -- --profile tiny
-cargo run --release -p pq_das -- --profile medium
-cargo run --release -p pq_das -- --profile large
-cargo run --release -p pq_das -- --profile stress
-cargo run --release -p pq_das -- --profile blob-128k-1
-cargo run --release -p pq_das -- --profile blob-128k-4
-```
-
-Build once and run all six benchmarks:
-
-```bash
-cargo build --release -p pq_das && \
-  for p in tiny medium large stress blob-128k-1 blob-128k-4; do
-    target/release/pq_das --profile "$p"
-  done
-```
-
-Run a custom half-rate profile:
-
-```bash
-cargo run --release -p pq_das -- \
-  --profile custom --n 4 --m 128 --k 64 --c 8
-```
-
-Override the WHIR inverse-rate exponent:
-
-```bash
-cargo run --release -p pq_das -- \
-  --profile medium --whir-log-inv-rate 2
-```
+- `v2_base` and `v2_ext` both keep Fiat-Shamir and $L$ computation outside the proof. The verifier rebuilds the statement and never trusts a prover-supplied $L$.
+- The LeanVM proof witness is the private codeword matrix. Public row hashes, the column root, and $L$ are bound through the read-only public-data segment.
+- The optimized guests use fixed cell-hash chunking and avoid the old outer-tree leaf copy by Merkle-rooting directly over column roots.
