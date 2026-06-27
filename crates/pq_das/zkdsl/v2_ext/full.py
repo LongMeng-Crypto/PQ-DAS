@@ -76,6 +76,24 @@ def hash_contiguous_chunks(data, num_chunks: Const):
     return out_many
 
 
+def hash_cell_10_chunks(cell):
+    states = Array(8 * DIGEST_LEN)
+    poseidon16_compress_half(cell, cell + DIGEST_LEN, states)
+    for chunk in unroll(1, 8):
+        poseidon16_compress_half(
+            states + (chunk - 1) * DIGEST_LEN,
+            cell + (chunk + 1) * DIGEST_LEN,
+            states + chunk * DIGEST_LEN,
+        )
+    out = Array(DIGEST_LEN)
+    poseidon16_compress_half(
+        states + 7 * DIGEST_LEN,
+        cell + 9 * DIGEST_LEN,
+        out,
+    )
+    return out
+
+
 def merkle_root_from_digests(leaves, log_num_leaves: Const):
     layer: Mut = leaves
     for level in unroll(1, log_num_leaves + 1):
@@ -138,7 +156,7 @@ def main():
     for row in range(0, N):
         row_base = codewords + row * M_EXT * DIM
         for cell in range(0, N_CELLS):
-            digest = hash_contiguous_chunks(row_base + cell * CELL_BASE_LEN, CELL_CHUNKS)
+            digest = hash_cell_10_chunks(row_base + cell * CELL_BASE_LEN)
             copy_digest(digest, cell_digests + (cell * N_PADDED + row) * DIGEST_LEN)
 
     for row in range(0, N):
@@ -155,23 +173,9 @@ def main():
         root = merkle_root_from_digests(cell_digests + cell * N_PADDED * DIGEST_LEN, LOG_N_PADDED)
         copy_digest(root, column_roots + cell * DIGEST_LEN)
 
-    outer_tree = Array(OUTER_TREE_DIGESTS * DIGEST_LEN)
-    for cell in range(0, N_CELLS):
-        copy_digest(column_roots + cell * DIGEST_LEN, outer_tree + cell * DIGEST_LEN)
-
-    for level in unroll(0, OUTER_MERKLE_DEPTH):
-        input_offset = OUTER_LEVEL_OFFSETS[level]
-        output_offset = OUTER_LEVEL_OFFSETS[level + 1]
-        for node in range(0, OUTER_LEVEL_SIZES[level + 1]):
-            poseidon16_compress_half(
-                outer_tree + (input_offset + 2 * node) * DIGEST_LEN,
-                outer_tree + (input_offset + 2 * node + 1) * DIGEST_LEN,
-                outer_tree + (output_offset + node) * DIGEST_LEN,
-            )
-
-    root_offset = OUTER_LEVEL_OFFSETS[OUTER_MERKLE_DEPTH] * DIGEST_LEN
+    outer_root = merkle_root_from_digests(column_roots, OUTER_MERKLE_DEPTH)
     for i in unroll(0, DIGEST_LEN):
-        assert outer_tree[root_offset + i] == public_root_col[i]
+        assert outer_root[i] == public_root_col[i]
 
     for row in range(0, N):
         result = Array(DIM)
