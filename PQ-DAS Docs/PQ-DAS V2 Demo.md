@@ -34,12 +34,12 @@ This demo line first replaces the V1 commitment layout with the V2 cell-digest l
 
 ## Benchmark Comparison: Single-Blob 
 
-| Demo | Profile | Payload | Bytecode instructions | Read-only elements | Opened cells | Commitment size | Proof size | Sample size | Encode + commit | Prover preprocess | LeanVM prove | Verifier rebuild | LeanVM verify | Verify openings | Reconstruct | VM cycles | Poseidon16 calls | ExtensionOp calls | Prove throughput | Speedup vs V1 |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| V1 | `blob-128k-1` | 124 KiB | 1024 | 327696 | 114 | 0.062 KB | 357.512 KB | 64.570 KB | 0.023s | 0.077s | 3.600s | 0.130s | included | 0.003s | 0.067s | n/a | n/a | n/a | 34.44 KiB/s | $1.00\times$ |
-| V2-base | `blob-128k-1` | 124 KiB | 4096 | 327696 | 19 | 0.06 KB | 278.69 KB | 10.76 KB | 0.017s | 0.114s | 0.649s | 0.112s | 0.032s | 0.001s | 0.067s | 135816 | 8702 | 65536 | 191.06 KiB/s | $5.55\times$ |
-| V2-ext | `blob-ext-1` | 155 KiB | 4096 | 81936 | 19 | 0.06 KB | 249.49 KB | 11.95 KB | 0.021s | 0.062s | 0.496s | 0.060s | 0.032s | 0.001s | 0.030s | 134794 | 10750 | 16384 | 312.50 KiB/s | $8.79\times$ |
-| Tau LeanVM | `n=1` | 155 KiB | 84620 | n/a | n/a | n/a | 255.80 KB | n/a | n/a | n/a | 0.555s | n/a | n/a | n/a | n/a | 86666 | 10753 | 65548 | 279.24 KiB/s | $8.11\times$ |
+| Demo | Profile | Payload | Bytecode instructions | Read-only elements | Opened cells | Commitment size | Proof size | Sample size | Encode + commit | Prover preprocess | LeanVM prove | Verifier rebuild | LeanVM verify | Verify openings | Reconstruct | VM cycles | Poseidon16 calls | ExtensionOp calls | Prove throughput | 
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| V1 | `blob-128k-1` | 124 KiB | 1024 | 327696 | 114 | 0.062 KB | 357.512 KB | 64.570 KB | 0.023s | 0.077s | 3.600s | 0.130s | included | 0.003s | 0.067s | n/a | n/a | n/a | 34.44 KiB/s | 
+| V2-base | `blob-128k-1` | 124 KiB | 4096 | 327696 | 19 | 0.06 KB | 278.69 KB | 10.76 KB | 0.017s | 0.114s | 0.649s | 0.112s | 0.032s | 0.001s | 0.067s | 135816 | 8702 | 65536 | 191.06 KiB/s | 
+| V2-ext | `blob-ext-1` | 155 KiB | 4096 | 81936 | 19 | 0.06 KB | 249.49 KB | 11.95 KB | 0.021s | 0.062s | 0.496s | 0.060s | 0.032s | 0.001s | 0.030s | 134794 | 10750 | 16384 | 312.50 KiB/s | 
+| Tau LeanVM | `n=1` | 155 KiB | 84620 | n/a | n/a | n/a | 255.80 KB | n/a | n/a | n/a | 0.555s | n/a | n/a | n/a | n/a | 86666 | 10753 | 65548 | 279.24 KiB/s | 
 
 ## Benchmark Comparison: Multi-Blob
 
