@@ -31,12 +31,24 @@ enum ProfileName {
     Blob128K14,
     #[value(name = "blob-128k-16")]
     Blob128K16,
+    #[value(name = "blob-256k-1")]
+    Blob256K1,
+    #[value(name = "blob-256k-14")]
+    Blob256K14,
+    #[value(name = "blob-256k-16")]
+    Blob256K16,
     #[value(name = "blob-ext-1")]
     BlobExt1,
     #[value(name = "blob-ext-14")]
     BlobExt14,
     #[value(name = "blob-ext-16")]
     BlobExt16,
+    #[value(name = "blob-ext-2x-1")]
+    BlobExt2x1,
+    #[value(name = "blob-ext-2x-14")]
+    BlobExt2x14,
+    #[value(name = "blob-ext-2x-16")]
+    BlobExt2x16,
     Custom,
 }
 
@@ -86,13 +98,13 @@ struct Cli {
 
     #[arg(
         long = "all-v3-base-benchmarks",
-        help = "Run blob-128k-1, blob-128k-14, and blob-128k-16 under V3-base"
+        help = "Run the 1x and 2x blob profiles under V3-base"
     )]
     all_v3_base_benchmarks: bool,
 
     #[arg(
         long = "all-v3-ext-benchmarks",
-        help = "Run blob-ext-1, blob-ext-14, and blob-ext-16 under V3-ext"
+        help = "Run the 1x and 2x extension-blob profiles under V3-ext"
     )]
     all_v3_ext_benchmarks: bool,
 
@@ -130,8 +142,16 @@ impl Cli {
             ProfileName::Blob128K4 => ParameterProfile::BLOB_128K_4,
             ProfileName::Blob128K14 => ParameterProfile::BLOB_128K_14,
             ProfileName::Blob128K16 => ParameterProfile::BLOB_128K_16,
-            ProfileName::BlobExt1 | ProfileName::BlobExt14 | ProfileName::BlobExt16 => {
-                return Err("extension profiles require --version v2_ext".into());
+            ProfileName::Blob256K1 => ParameterProfile::BLOB_256K_1,
+            ProfileName::Blob256K14 => ParameterProfile::BLOB_256K_14,
+            ProfileName::Blob256K16 => ParameterProfile::BLOB_256K_16,
+            ProfileName::BlobExt1
+            | ProfileName::BlobExt14
+            | ProfileName::BlobExt16
+            | ProfileName::BlobExt2x1
+            | ProfileName::BlobExt2x14
+            | ProfileName::BlobExt2x16 => {
+                return Err("extension profiles require --version v2_ext or --version v3_ext".into());
             }
             ProfileName::Custom => ParameterProfile::custom(
                 self.n.ok_or("custom profile requires --n")?,
@@ -152,6 +172,9 @@ impl Cli {
             ProfileName::BlobExt1 => v2_ext::ExtProfile::BLOB_EXT_1,
             ProfileName::BlobExt14 => v2_ext::ExtProfile::BLOB_EXT_14,
             ProfileName::BlobExt16 => v2_ext::ExtProfile::BLOB_EXT_16,
+            ProfileName::BlobExt2x1 | ProfileName::BlobExt2x14 | ProfileName::BlobExt2x16 => {
+                return Err("2x extension profiles require --version v3_ext".into());
+            }
             _ => return Err("v2_ext requires --profile blob-ext-1, blob-ext-14, or blob-ext-16".into()),
         };
         profile.whir_log_inv_rate = self.whir_log_inv_rate;
@@ -164,7 +187,10 @@ impl Cli {
             ProfileName::BlobExt1 => v3_ext::ExtProfile::BLOB_EXT_1,
             ProfileName::BlobExt14 => v3_ext::ExtProfile::BLOB_EXT_14,
             ProfileName::BlobExt16 => v3_ext::ExtProfile::BLOB_EXT_16,
-            _ => return Err("v3_ext requires --profile blob-ext-1, blob-ext-14, or blob-ext-16".into()),
+            ProfileName::BlobExt2x1 => v3_ext::ExtProfile::BLOB_EXT_2X_1,
+            ProfileName::BlobExt2x14 => v3_ext::ExtProfile::BLOB_EXT_2X_14,
+            ProfileName::BlobExt2x16 => v3_ext::ExtProfile::BLOB_EXT_2X_16,
+            _ => return Err("v3_ext requires an extension profile".into()),
         };
         profile.whir_log_inv_rate = self.whir_log_inv_rate;
         profile.validate()?;
@@ -269,6 +295,9 @@ fn run_all_v3_base_benchmarks(skip_reconstruction: bool) -> Result<(), Box<dyn s
         ParameterProfile::BLOB_128K_1,
         ParameterProfile::BLOB_128K_14,
         ParameterProfile::BLOB_128K_16,
+        ParameterProfile::BLOB_256K_1,
+        ParameterProfile::BLOB_256K_14,
+        ParameterProfile::BLOB_256K_16,
     ];
     let mut results = Vec::with_capacity(profiles.len());
     for profile in profiles {
@@ -291,6 +320,9 @@ fn run_all_v3_ext_benchmarks(skip_reconstruction: bool) -> Result<(), Box<dyn st
         v3_ext::ExtProfile::BLOB_EXT_1,
         v3_ext::ExtProfile::BLOB_EXT_14,
         v3_ext::ExtProfile::BLOB_EXT_16,
+        v3_ext::ExtProfile::BLOB_EXT_2X_1,
+        v3_ext::ExtProfile::BLOB_EXT_2X_14,
+        v3_ext::ExtProfile::BLOB_EXT_2X_16,
     ];
     let mut results = Vec::with_capacity(profiles.len());
     for profile in profiles {

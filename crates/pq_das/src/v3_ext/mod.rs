@@ -59,6 +59,30 @@ impl ExtProfile {
         c: 16,
         whir_log_inv_rate: 1,
     };
+    pub const BLOB_EXT_2X_1: Self = Self {
+        name: "blob-ext-2x-1",
+        n: 1,
+        m: 32768,
+        k: 16384,
+        c: 32,
+        whir_log_inv_rate: 1,
+    };
+    pub const BLOB_EXT_2X_14: Self = Self {
+        name: "blob-ext-2x-14",
+        n: 14,
+        m: 32768,
+        k: 16384,
+        c: 32,
+        whir_log_inv_rate: 1,
+    };
+    pub const BLOB_EXT_2X_16: Self = Self {
+        name: "blob-ext-2x-16",
+        n: 16,
+        m: 32768,
+        k: 16384,
+        c: 32,
+        whir_log_inv_rate: 1,
+    };
 
     /// Returns the number of cell columns in one extension-field codeword.
     pub const fn n_cells(self) -> usize {

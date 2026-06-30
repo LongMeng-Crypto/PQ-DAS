@@ -93,6 +93,32 @@ def hash_cell_10_chunks(cell):
     return out
 
 
+def hash_cell_20_chunks(cell):
+    states = Array(18 * DIGEST_LEN)
+    poseidon16_compress_half(cell, cell + DIGEST_LEN, states)
+    for chunk in unroll(1, 18):
+        poseidon16_compress_half(
+            states + (chunk - 1) * DIGEST_LEN,
+            cell + (chunk + 1) * DIGEST_LEN,
+            states + chunk * DIGEST_LEN,
+        )
+    out = Array(DIGEST_LEN)
+    poseidon16_compress_half(
+        states + 17 * DIGEST_LEN,
+        cell + 19 * DIGEST_LEN,
+        out,
+    )
+    return out
+
+
+def hash_cell(cell):
+    if CELL_CHUNKS == 10:
+        return hash_cell_10_chunks(cell)
+    if CELL_CHUNKS == 20:
+        return hash_cell_20_chunks(cell)
+    return hash_contiguous_chunks(cell, CELL_CHUNKS)
+
+
 def merkle_root_from_digests(leaves, log_num_leaves: Const):
     layer: Mut = leaves
     for level in unroll(1, log_num_leaves + 1):
@@ -154,7 +180,7 @@ def main():
     for row in range(0, N):
         row_base = codewords + row * M_EXT * DIM
         for cell in range(0, N_CELLS):
-            digest = hash_cell_10_chunks(row_base + cell * CELL_BASE_LEN)
+            digest = hash_cell(row_base + cell * CELL_BASE_LEN)
             copy_digest(digest, cell_digests + (cell * N_PADDED + row) * DIGEST_LEN)
 
     row_hashes = Array(N_PADDED * DIGEST_LEN)

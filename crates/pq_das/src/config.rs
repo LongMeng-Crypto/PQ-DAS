@@ -105,6 +105,33 @@ impl ParameterProfile {
         whir_log_inv_rate: 1,
     };
 
+    pub const BLOB_256K_1: Self = Self {
+        name: "blob-256k-1",
+        n: 1,
+        m: 131072,
+        k: 65536,
+        c: 128,
+        whir_log_inv_rate: 1,
+    };
+
+    pub const BLOB_256K_14: Self = Self {
+        name: "blob-256k-14",
+        n: 14,
+        m: 131072,
+        k: 65536,
+        c: 128,
+        whir_log_inv_rate: 1,
+    };
+
+    pub const BLOB_256K_16: Self = Self {
+        name: "blob-256k-16",
+        n: 16,
+        m: 131072,
+        k: 65536,
+        c: 128,
+        whir_log_inv_rate: 1,
+    };
+
     /// Constructs a custom half-rate profile and validates it before use.
     pub fn custom(n: usize, m: usize, k: usize, c: usize, whir_log_inv_rate: usize) -> Result<Self, ProfileError> {
         let profile = Self {

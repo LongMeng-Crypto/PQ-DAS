@@ -81,7 +81,7 @@ def hash_contiguous_chunks(data, num_chunks: Const):
     return out_many
 
 
-# Hashes the production V2 base-field cell size c=64, i.e. 8 rate-eight chunks.
+# Hashes the base-field cell size c=64, i.e. 8 rate-eight chunks.
 def hash_cell_8_chunks(cell):
     states = Array(6 * DIGEST_LEN)
     poseidon16_compress_half(cell, cell + DIGEST_LEN, states)
@@ -100,10 +100,31 @@ def hash_cell_8_chunks(cell):
     return out
 
 
-# Keeps small test profiles generic while specializing the 128 KiB V2 profiles.
+# Hashes the doubled base-field cell size c=128, i.e. 16 rate-eight chunks.
+def hash_cell_16_chunks(cell):
+    states = Array(14 * DIGEST_LEN)
+    poseidon16_compress_half(cell, cell + DIGEST_LEN, states)
+    for chunk in unroll(1, 14):
+        poseidon16_compress_half(
+            states + (chunk - 1) * DIGEST_LEN,
+            cell + (chunk + 1) * DIGEST_LEN,
+            states + chunk * DIGEST_LEN,
+        )
+    out = Array(DIGEST_LEN)
+    poseidon16_compress_half(
+        states + 13 * DIGEST_LEN,
+        cell + 15 * DIGEST_LEN,
+        out,
+    )
+    return out
+
+
+# Keeps small test profiles generic while specializing production V3 base profiles.
 def hash_cell(cell):
     if CELL_CHUNKS == 8:
         return hash_cell_8_chunks(cell)
+    if CELL_CHUNKS == 16:
+        return hash_cell_16_chunks(cell)
     return hash_contiguous_chunks(cell, CELL_CHUNKS)
 
 
