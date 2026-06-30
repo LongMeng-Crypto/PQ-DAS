@@ -47,8 +47,8 @@ This document defines a distributed PQ-DAS construction in which each prover enc
     $\pi \leftarrow{\sf LeanVM.Prove}({\sf pp}_{\sf STARK},{\sf root},\{e_{i,j}\}_{i\in[1,n],j\in[1,\ell]},\mathcal{R}_{\sf agg})$, where
     $$
     \begin{aligned}
-    \mathcal{R}_{\sf agg}=\{(\mathsf{stmt}, \mathsf{witn}): & \mathsf{stmt} = \mathsf{root}, \mathsf{witn} = (\{\pi_i\}_{i \in [1, n]}, \{e_{i,j}\}_{i\in[1,n],j\in[1,\ell]}) \\
-    &\forall i\in[1,n],\ r_i=\mathsf{H}(e_{i,1},\ldots,e_{i,t}),\\
+    \mathcal{R}_{\sf agg}=\{(\mathsf{stmt}, \mathsf{witn}): & \mathsf{stmt} = \mathsf{root}, \mathsf{witn} = (\{\pi_i\}_{i \in [1, n]}, \{e_{i,j}\}_{i\in[1,n],j\in[1,\ell]}) \\ 
+    &\forall i\in[1,n],\ r_i=\mathsf{H}(e_{i,1},\ldots,e_{i,\ell}),\\
     &\mathsf{root_{\sf row}} = \mathsf{Merkle.Com}(r_1, ...,  r_n),\\
     &\forall j\in[1,\ell],\ C_j=\mathsf{Merkle.Com}(e_{1,j}, ..., e_{n,j}),\\
     &{\sf root}_{\sf col}=\mathsf{Merkle.Com}(C_1, ..., C_{\ell}),\\
@@ -211,7 +211,7 @@ In this section we define the subset-soundness formula and its security paramete
 
 ### Sampling without replacement
 
-Subset-soundness formula: $\nu_{\sf sub}=\binom{\ell}{\Delta}\binom{N_{\sf clients}}{L_{\sf sub}}\left(\frac{\binom{\Delta}{|Q|}}{\binom{\ell}{|Q|}}\right)^{L_{\sf sub}} \leq 2^{-\lambda}$.
+Subset-soundness formula: $\nu_{\sf sub}=\binom{\ell}{\Delta}\binom{N_{\sf clients}}{L_{\sf sub}}\left(\frac{\binom{\Delta}{|Q|}}{\binom{\ell}{|Q|}}\right)^{L_{\sf sub}} \leq 2^{-\lambda}$. 
 
 Opening cells formula derivation:
 
@@ -243,7 +243,7 @@ For this parameter set, $|Q|=19$ gives $\log_2\nu_{\sf sub}\approx -108.031$, wh
 
 ### Sampling with replacement
 
-Subset-soundness formula: $\nu_{\sf sub}=\binom{\ell}{\Delta}\binom{N_{\sf clients}}{L_{\sf sub}}\left(\frac{\Delta}{\ell}\right)^{|Q|L_{\sf sub}} \leq 2^{-\lambda}$.
+Subset-soundness formula: $\nu_{\sf sub}=\binom{\ell}{\Delta}\binom{N_{\sf clients}}{L_{\sf sub}}\left(\frac{\Delta}{\ell}\right)^{|Q|L_{\sf sub}} \leq 2^{-\lambda}$. 
 
 Opening cells formula derivation:
 
@@ -270,3 +270,4 @@ Using the same 128 KiB parameter set:
 | $\|Q\|_{\min}$ | $19$ |
 
 For this parameter set, $|Q|=19$ gives $\log_2\nu_{\sf sub}\approx -83.398$, while $|Q|=18$ gives $\log_2\nu_{\sf sub}\approx 16.884$. Thus, $|Q|=19$ can be a suitable choice in this setting.
+

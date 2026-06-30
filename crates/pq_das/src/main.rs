@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use backend::PrimeCharacteristicRing;
 use clap::{Parser, ValueEnum};
 use lean_vm::F;
-use pq_das::{DIGEST_LEN, ParameterProfile, demo_data, v2_base, v2_ext};
+use pq_das::{DIGEST_LEN, ParameterProfile, dbp_ext, demo_data, v2_base, v2_ext};
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum VersionName {
@@ -11,6 +11,8 @@ enum VersionName {
     V2Base,
     #[value(name = "v2_ext", alias = "v2-ext")]
     V2Ext,
+    #[value(name = "dbp_ext", alias = "dbp-ext")]
+    DbpExt,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -80,6 +82,12 @@ struct Cli {
     )]
     all_v2_ext_benchmarks: bool,
 
+    #[arg(
+        long = "all-dbp-ext-benchmarks",
+        help = "Run blob-ext-1, blob-ext-14, and blob-ext-16 under the distributed blob proving demo"
+    )]
+    all_dbp_ext_benchmarks: bool,
+
     #[arg(long, value_enum, default_value_t = V2RelationName::Full)]
     v2_relation: V2RelationName,
 
@@ -136,7 +144,19 @@ impl Cli {
             ProfileName::BlobExt1 => v2_ext::ExtProfile::BLOB_EXT_1,
             ProfileName::BlobExt14 => v2_ext::ExtProfile::BLOB_EXT_14,
             ProfileName::BlobExt16 => v2_ext::ExtProfile::BLOB_EXT_16,
-            _ => return Err("v2_ext requires --profile blob-ext-1, blob-ext-14, or blob-ext-16".into()),
+            _ => return Err("extension profiles require --profile blob-ext-1, blob-ext-14, or blob-ext-16".into()),
+        };
+        profile.whir_log_inv_rate = self.whir_log_inv_rate;
+        profile.validate()?;
+        Ok(profile)
+    }
+
+    fn selected_dbp_ext_profile(&self) -> Result<dbp_ext::ExtProfile, Box<dyn std::error::Error>> {
+        let mut profile = match self.profile {
+            ProfileName::BlobExt1 => dbp_ext::ExtProfile::BLOB_EXT_1,
+            ProfileName::BlobExt14 => dbp_ext::ExtProfile::BLOB_EXT_14,
+            ProfileName::BlobExt16 => dbp_ext::ExtProfile::BLOB_EXT_16,
+            _ => return Err("DBP extension profiles require --profile blob-ext-1, blob-ext-14, or blob-ext-16".into()),
         };
         profile.whir_log_inv_rate = self.whir_log_inv_rate;
         profile.validate()?;
@@ -155,6 +175,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         run_all_v2_ext_benchmarks(cli.skip_reconstruction)?;
         return Ok(());
     }
+    if cli.all_dbp_ext_benchmarks {
+        run_all_dbp_ext_benchmarks(cli.skip_reconstruction)?;
+        return Ok(());
+    }
 
     match cli.version {
         VersionName::V2Base => run_v2_base_single(
@@ -163,6 +187,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             cli.v2_relation.into(),
         )?,
         VersionName::V2Ext => run_v2_ext_single(cli.selected_ext_profile()?, cli.skip_reconstruction)?,
+        VersionName::DbpExt => run_dbp_ext_single(cli.selected_dbp_ext_profile()?, cli.skip_reconstruction)?,
     }
     Ok(())
 }
@@ -215,6 +240,31 @@ fn run_all_v2_ext_benchmarks(skip_reconstruction: bool) -> Result<(), Box<dyn st
         results.push(run_v2_ext_benchmark(profile, skip_reconstruction)?);
     }
     print_v2_ext_table(&results);
+    Ok(())
+}
+
+/// Runs one DBP extension-field benchmark and prints the detailed report plus VM counters.
+fn run_dbp_ext_single(
+    profile: dbp_ext::ExtProfile,
+    skip_reconstruction: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let result = run_dbp_ext_benchmark(profile, skip_reconstruction)?;
+    print_dbp_ext_report(&result);
+    Ok(())
+}
+
+/// Runs and prints the distributed blob proving benchmark table.
+fn run_all_dbp_ext_benchmarks(skip_reconstruction: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let profiles = [
+        dbp_ext::ExtProfile::BLOB_EXT_1,
+        dbp_ext::ExtProfile::BLOB_EXT_14,
+        dbp_ext::ExtProfile::BLOB_EXT_16,
+    ];
+    let mut results = Vec::with_capacity(profiles.len());
+    for profile in profiles {
+        results.push(run_dbp_ext_benchmark(profile, skip_reconstruction)?);
+    }
+    print_dbp_ext_table(&results);
     Ok(())
 }
 
@@ -364,6 +414,134 @@ fn run_v2_ext_benchmark(
     })
 }
 
+fn run_dbp_ext_benchmark(
+    profile: dbp_ext::ExtProfile,
+    skip_reconstruction: bool,
+) -> Result<dbp_ext::DbpBenchmarkResult, Box<dyn std::error::Error>> {
+    let data = dbp_ext::demo_data(profile);
+    let mut row_commitments = Vec::with_capacity(profile.n);
+    let mut row_aux = Vec::with_capacity(profile.n);
+    let mut row_proofs = Vec::with_capacity(profile.n);
+
+    let started = Instant::now();
+    for blob in &data {
+        let (commitment, aux) = dbp_ext::dbp_encode_row(profile, blob)?;
+        row_commitments.push(commitment);
+        row_aux.push(aux);
+    }
+    let row_encode_commit = started.elapsed();
+
+    let started = Instant::now();
+    let row_prepared = row_commitments
+        .iter()
+        .cloned()
+        .map(dbp_ext::dbp_prepare_row_statement)
+        .collect::<Result<Vec<_>, _>>()?;
+    let row_preprocess = started.elapsed();
+
+    let started = Instant::now();
+    for (prepared, aux) in row_prepared.iter().zip(&row_aux) {
+        row_proofs.push(dbp_ext::dbp_prove_row(prepared, aux)?);
+    }
+    let row_prove_total = started.elapsed();
+
+    let started = Instant::now();
+    for (prepared, proof) in row_prepared.iter().zip(&row_proofs) {
+        dbp_ext::dbp_verify_row(prepared, proof)?;
+    }
+    let row_host_verify = started.elapsed();
+
+    let started = Instant::now();
+    let (commitment, aux) = dbp_ext::dbp_aggregate_commit(profile, row_commitments, row_proofs.clone(), &row_aux)?;
+    let prepared = dbp_ext::dbp_prepare_aggregate_statement(commitment)?;
+    let aggregate_preprocess = started.elapsed();
+
+    let started = Instant::now();
+    let proof = dbp_ext::dbp_prove_aggregate(&prepared, &aux)?;
+    let aggregate_prove = started.elapsed();
+
+    let opened_cells = dbp_ext::opened_cells(profile).min(profile.n_cells());
+    let started = Instant::now();
+    let indices =
+        dbp_ext::dbp_sample_query_indices(&prepared.commitment, &[F::from_u32(42); DIGEST_LEN], opened_cells)?;
+    let transcript = dbp_ext::dbp_query(&aux, &indices)?;
+    let opening_generation = started.elapsed();
+
+    let started = Instant::now();
+    let verifier_prepared = dbp_ext::dbp_prepare_aggregate_statement(prepared.commitment.clone())?;
+    let verifier_rebuild = started.elapsed();
+
+    let started = Instant::now();
+    dbp_ext::dbp_verify_aggregate(&verifier_prepared, &proof)?;
+    let aggregate_verify = started.elapsed();
+
+    let started = Instant::now();
+    let opening_accepted = dbp_ext::dbp_verify_openings(&prepared.commitment, &transcript);
+    let verify_openings = started.elapsed();
+
+    let (reconstruction, reconstruct_time) = if skip_reconstruction {
+        (None, None)
+    } else {
+        let reconstruction_indices = dbp_ext::dbp_sample_query_indices(
+            &prepared.commitment,
+            &[F::from_u32(84); DIGEST_LEN],
+            profile.reconstruction_threshold_cells(),
+        )?;
+        let reconstruction_transcript = dbp_ext::dbp_query(&aux, &reconstruction_indices)?;
+        let started = Instant::now();
+        let correct = dbp_ext::dbp_reconstruct(&prepared.commitment, &[reconstruction_transcript])? == data;
+        (Some(correct), Some(started.elapsed()))
+    };
+
+    Ok(dbp_ext::DbpBenchmarkResult {
+        profile,
+        commitment: prepared.commitment.clone(),
+        prepared,
+        proof,
+        transcript,
+        row_proofs,
+        opened_cells,
+        reconstruction,
+        timings: dbp_ext::DbpBenchmarkTimings {
+            row_encode_commit,
+            row_preprocess,
+            row_prove_total,
+            row_host_verify,
+            aggregate_preprocess,
+            aggregate_prove,
+            opening_generation,
+            verifier_rebuild,
+            aggregate_verify,
+            verify_openings,
+            reconstruct: reconstruct_time,
+        },
+        accepted: opening_accepted,
+    })
+}
+
+fn print_dbp_ext_report(result: &dbp_ext::DbpBenchmarkResult) {
+    println!("PQ-DAS DBP-ext LeanVM demo");
+    println!("{}", dbp_ext_row(result));
+    if let Some(metadata) = &result.proof.execution.metadata {
+        println!("Aggregate VM cycles: {}", metadata.cycles);
+        println!("Aggregate Poseidon16 calls: {}", metadata.n_poseidons);
+        println!("Aggregate ExtensionOp calls: {}", metadata.n_extension_ops);
+    }
+}
+
+fn print_dbp_ext_table(results: &[dbp_ext::DbpBenchmarkResult]) {
+    println!("PQ-DAS DBP-ext LeanVM benchmark table");
+    println!(
+        "| Profile | Aggregate bytecode instructions | Aggregate read-only elements | Opened cells | $\\log_2\\nu_{{\\mathrm{{rep}}}}$ | Commitment size | Row proofs size | Per-prover upload | Upload/blob | Aggregate proof size | Total proof size | Sample size | Row encode + commit | Row preprocess | Row prove total | Row host verify | Aggregate preprocess | Aggregate prove | Opening generation | Verifier rebuild | Aggregate verify | Verify openings | Reconstruct | Aggregate VM cycles | Aggregate Poseidon16 calls | Aggregate ExtensionOp calls | Result |"
+    );
+    println!(
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"
+    );
+    for result in results {
+        println!("{}", dbp_ext_row(result));
+    }
+}
+
 fn print_v2_base_report(result: &v2_base::BenchmarkResult) {
     println!("PQ-DAS V2-base LeanVM demo");
     println!("{}", v2_base_row(result));
@@ -408,6 +586,60 @@ fn print_v2_ext_table(results: &[v2_ext::ExtBenchmarkResult]) {
     for result in results {
         println!("{}", v2_ext_row(result));
     }
+}
+
+fn dbp_ext_row(result: &dbp_ext::DbpBenchmarkResult) -> String {
+    let profile = result.profile;
+    let aggregate_proof_bytes = result.proof.execution.proof.proof_size_fe() * size_of::<u32>();
+    let row_proof_bytes = result
+        .row_proofs
+        .iter()
+        .map(|proof| proof.execution.proof.proof_size_fe() * size_of::<u32>())
+        .sum::<usize>();
+    let total_proof_bytes = aggregate_proof_bytes + row_proof_bytes;
+    let cell_digest_bytes_per_row = profile.n_cells() * DIGEST_LEN * size_of::<u32>();
+    let row_hash_bytes = DIGEST_LEN * size_of::<u32>();
+    let row_proof_bytes_per_row = row_proof_bytes / profile.n.max(1);
+    let per_prover_upload_bytes = row_proof_bytes_per_row + row_hash_bytes + cell_digest_bytes_per_row;
+    let blob_bytes = profile.k * pq_das::EXT_DEGREE * size_of::<u32>();
+    let upload_blob_ratio = per_prover_upload_bytes as f64 / blob_bytes as f64;
+    let metadata = result.proof.execution.metadata.as_ref();
+    let reconstruction = match result.reconstruction {
+        Some(true) => format_duration(result.timings.reconstruct),
+        Some(false) => "failed".to_string(),
+        None => "skipped".to_string(),
+    };
+    let ok = result.accepted && result.reconstruction.unwrap_or(true);
+    format!(
+        "| {} | {} | {} | {} | {:.3} | {} KB | {} KB | {} KB | {:.2}x | {} KB | {} KB | {} KB | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {} | {} | {} | {} | {} |",
+        profile.name,
+        result.prepared.bytecode.size(),
+        result.prepared.bytecode.read_only_data().len(),
+        result.opened_cells,
+        dbp_ext::subset_log2_failure_with_replacement(profile, result.opened_cells),
+        kb(dbp_ext::dbp_commitment_size_bytes(&result.commitment)),
+        kb(row_proof_bytes),
+        kb(per_prover_upload_bytes),
+        upload_blob_ratio,
+        kb(aggregate_proof_bytes),
+        kb(total_proof_bytes),
+        kb(dbp_ext::dbp_transcript_size_bytes(&result.transcript)),
+        result.timings.row_encode_commit.as_secs_f64(),
+        result.timings.row_preprocess.as_secs_f64(),
+        result.timings.row_prove_total.as_secs_f64(),
+        result.timings.row_host_verify.as_secs_f64(),
+        result.timings.aggregate_preprocess.as_secs_f64(),
+        result.timings.aggregate_prove.as_secs_f64(),
+        result.timings.opening_generation.as_secs_f64(),
+        result.timings.verifier_rebuild.as_secs_f64(),
+        result.timings.aggregate_verify.as_secs_f64(),
+        result.timings.verify_openings.as_secs_f64(),
+        reconstruction,
+        metadata.map(|m| m.cycles).unwrap_or_default(),
+        metadata.map(|m| m.n_poseidons).unwrap_or_default(),
+        metadata.map(|m| m.n_extension_ops).unwrap_or_default(),
+        if ok { "accepted" } else { "failed" },
+    )
 }
 
 fn v2_base_row(result: &v2_base::BenchmarkResult) -> String {

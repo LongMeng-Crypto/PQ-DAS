@@ -1,4 +1,5 @@
 mod config;
+pub mod dbp_ext;
 pub mod encoding;
 mod hashing;
 mod membership;
