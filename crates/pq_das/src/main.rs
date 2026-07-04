@@ -45,10 +45,76 @@ enum ProfileName {
     BlobExt16,
     #[value(name = "blob-ext-2x-1")]
     BlobExt2x1,
+    #[value(name = "blob-ext-2x-2")]
+    BlobExt2x2,
+    #[value(name = "blob-ext-2x-4")]
+    BlobExt2x4,
+    #[value(name = "blob-ext-2x-6")]
+    BlobExt2x6,
+    #[value(name = "blob-ext-2x-8")]
+    BlobExt2x8,
+    #[value(name = "blob-ext-2x-10")]
+    BlobExt2x10,
+    #[value(name = "blob-ext-2x-12")]
+    BlobExt2x12,
     #[value(name = "blob-ext-2x-14")]
     BlobExt2x14,
     #[value(name = "blob-ext-2x-16")]
     BlobExt2x16,
+    #[value(name = "blob-ext-2x-c16-14")]
+    BlobExt2xC16_14,
+    #[value(name = "blob-ext-2x-c64-1")]
+    BlobExt2xC64_1,
+    #[value(name = "blob-ext-2x-c64-14")]
+    BlobExt2xC64_14,
+    #[value(name = "blob-ext-2x-c64-16")]
+    BlobExt2xC64_16,
+    #[value(name = "blob-ext-2x-c128-1")]
+    BlobExt2xC128_1,
+    #[value(name = "blob-ext-2x-c128-14")]
+    BlobExt2xC128_14,
+    #[value(name = "blob-ext-2x-c128-16")]
+    BlobExt2xC128_16,
+    #[value(name = "blob-ext-4x-1")]
+    BlobExt4x1,
+    #[value(name = "blob-ext-4x-2")]
+    BlobExt4x2,
+    #[value(name = "blob-ext-4x-4")]
+    BlobExt4x4,
+    #[value(name = "blob-ext-4x-6")]
+    BlobExt4x6,
+    #[value(name = "blob-ext-4x-8")]
+    BlobExt4x8,
+    #[value(name = "blob-ext-4x-10")]
+    BlobExt4x10,
+    #[value(name = "blob-ext-4x-12")]
+    BlobExt4x12,
+    #[value(name = "blob-ext-4x-14")]
+    BlobExt4x14,
+    #[value(name = "blob-ext-4x-16")]
+    BlobExt4x16,
+    #[value(name = "blob-ext-4x-c16-14")]
+    BlobExt4xC16_14,
+    #[value(name = "blob-ext-4x-c32-1")]
+    BlobExt4xC32_1,
+    #[value(name = "blob-ext-4x-c32-2")]
+    BlobExt4xC32_2,
+    #[value(name = "blob-ext-4x-c32-4")]
+    BlobExt4xC32_4,
+    #[value(name = "blob-ext-4x-c32-6")]
+    BlobExt4xC32_6,
+    #[value(name = "blob-ext-4x-c32-8")]
+    BlobExt4xC32_8,
+    #[value(name = "blob-ext-4x-c32-10")]
+    BlobExt4xC32_10,
+    #[value(name = "blob-ext-4x-c32-12")]
+    BlobExt4xC32_12,
+    #[value(name = "blob-ext-4x-c32-14")]
+    BlobExt4xC32_14,
+    #[value(name = "blob-ext-4x-c32-16")]
+    BlobExt4xC32_16,
+    #[value(name = "blob-ext-4x-c128-14")]
+    BlobExt4xC128_14,
     Custom,
 }
 
@@ -108,6 +174,66 @@ struct Cli {
     )]
     all_v3_ext_benchmarks: bool,
 
+    #[arg(
+        long = "v3-ext-blob-size-sweep",
+        help = "Run V3-ext n=14, ell=1024 profiles for blob sizes 1x, 2x, and 4x"
+    )]
+    v3_ext_blob_size_sweep: bool,
+
+    #[arg(
+        long = "v3-ext-cell-size-sweep",
+        help = "Run V3-ext 2x, n=14 profiles for cell sizes c=16, c=32, c=64, and c=128"
+    )]
+    v3_ext_cell_size_sweep: bool,
+
+    #[arg(
+        long = "v3-ext-row-count-sweep",
+        help = "Run V3-ext 2x, c=32 profiles for n=1,2,4,6,8,10,12,14,16"
+    )]
+    v3_ext_row_count_sweep: bool,
+
+    #[arg(
+        long = "v3-ext-whir-rate-sweep",
+        help = "Run V3-ext blob-ext-2x-14 and blob-ext-4x-14 with WHIR log inverse rates 1 and 2"
+    )]
+    v3_ext_whir_rate_sweep: bool,
+
+    #[arg(
+        long = "all-v3-ext-cellsize-benchmarks",
+        help = "Run V3-ext 2x profiles with cell sizes c=32, c=64, and c=128"
+    )]
+    all_v3_ext_cellsize_benchmarks: bool,
+
+    #[arg(
+        long = "v3-ext-4x-cell-size-sweep",
+        help = "Run V3-ext 4x, n=14 profiles for cell sizes c=16, c=32, c=64, and c=128"
+    )]
+    v3_ext_4x_cell_size_sweep: bool,
+
+    #[arg(
+        long = "all-v3-ext-4x-cellsize-benchmarks",
+        help = "Run V3-ext 4x profiles with cell sizes c=16, c=32, c=64, and c=128"
+    )]
+    all_v3_ext_4x_cellsize_benchmarks: bool,
+
+    #[arg(
+        long = "all-v3-ext-2x-row-benchmarks",
+        help = "Run V3-ext 2x profiles for n=1,2,4,6,8,10,12,14,16"
+    )]
+    all_v3_ext_2x_row_benchmarks: bool,
+
+    #[arg(
+        long = "v3-ext-4x-row-count-sweep",
+        help = "Run V3-ext 4x, c=32 profiles for n=1,2,4,6,8,10,12,14,16"
+    )]
+    v3_ext_4x_row_count_sweep: bool,
+
+    #[arg(
+        long = "all-v3-ext-4x-row-benchmarks",
+        help = "Run V3-ext 4x-c32 profiles for n=1,2,4,6,8,10,12,14,16"
+    )]
+    all_v3_ext_4x_row_benchmarks: bool,
+
     #[arg(long, value_enum, default_value_t = V2RelationName::Full)]
     v2_relation: V2RelationName,
 
@@ -149,8 +275,41 @@ impl Cli {
             | ProfileName::BlobExt14
             | ProfileName::BlobExt16
             | ProfileName::BlobExt2x1
+            | ProfileName::BlobExt2x2
+            | ProfileName::BlobExt2x4
+            | ProfileName::BlobExt2x6
+            | ProfileName::BlobExt2x8
+            | ProfileName::BlobExt2x10
+            | ProfileName::BlobExt2x12
             | ProfileName::BlobExt2x14
-            | ProfileName::BlobExt2x16 => {
+            | ProfileName::BlobExt2x16
+            | ProfileName::BlobExt2xC16_14
+            | ProfileName::BlobExt2xC64_1
+            | ProfileName::BlobExt2xC64_14
+            | ProfileName::BlobExt2xC64_16
+            | ProfileName::BlobExt2xC128_1
+            | ProfileName::BlobExt2xC128_14
+            | ProfileName::BlobExt2xC128_16
+            | ProfileName::BlobExt4x1
+            | ProfileName::BlobExt4x2
+            | ProfileName::BlobExt4x4
+            | ProfileName::BlobExt4x6
+            | ProfileName::BlobExt4x8
+            | ProfileName::BlobExt4x10
+            | ProfileName::BlobExt4x12
+            | ProfileName::BlobExt4x14
+            | ProfileName::BlobExt4x16
+            | ProfileName::BlobExt4xC16_14
+            | ProfileName::BlobExt4xC32_1
+            | ProfileName::BlobExt4xC32_2
+            | ProfileName::BlobExt4xC32_4
+            | ProfileName::BlobExt4xC32_6
+            | ProfileName::BlobExt4xC32_8
+            | ProfileName::BlobExt4xC32_10
+            | ProfileName::BlobExt4xC32_12
+            | ProfileName::BlobExt4xC32_14
+            | ProfileName::BlobExt4xC32_16
+            | ProfileName::BlobExt4xC128_14 => {
                 return Err("extension profiles require --version v2_ext or --version v3_ext".into());
             }
             ProfileName::Custom => ParameterProfile::custom(
@@ -172,8 +331,35 @@ impl Cli {
             ProfileName::BlobExt1 => v2_ext::ExtProfile::BLOB_EXT_1,
             ProfileName::BlobExt14 => v2_ext::ExtProfile::BLOB_EXT_14,
             ProfileName::BlobExt16 => v2_ext::ExtProfile::BLOB_EXT_16,
-            ProfileName::BlobExt2x1 | ProfileName::BlobExt2x14 | ProfileName::BlobExt2x16 => {
-                return Err("2x extension profiles require --version v3_ext".into());
+            ProfileName::BlobExt2x1
+            | ProfileName::BlobExt2x2
+            | ProfileName::BlobExt2x4
+            | ProfileName::BlobExt2x6
+            | ProfileName::BlobExt2x8
+            | ProfileName::BlobExt2x10
+            | ProfileName::BlobExt2x12
+            | ProfileName::BlobExt2x14
+            | ProfileName::BlobExt2x16
+            | ProfileName::BlobExt2xC16_14
+            | ProfileName::BlobExt2xC64_1
+            | ProfileName::BlobExt2xC64_14
+            | ProfileName::BlobExt2xC64_16
+            | ProfileName::BlobExt2xC128_1
+            | ProfileName::BlobExt2xC128_14
+            | ProfileName::BlobExt2xC128_16
+            | ProfileName::BlobExt4x1
+            | ProfileName::BlobExt4x14
+            | ProfileName::BlobExt4x16
+            | ProfileName::BlobExt4xC32_1
+            | ProfileName::BlobExt4xC32_2
+            | ProfileName::BlobExt4xC32_4
+            | ProfileName::BlobExt4xC32_6
+            | ProfileName::BlobExt4xC32_8
+            | ProfileName::BlobExt4xC32_10
+            | ProfileName::BlobExt4xC32_12
+            | ProfileName::BlobExt4xC32_14
+            | ProfileName::BlobExt4xC32_16 => {
+                return Err("larger extension profiles require --version v3_ext".into());
             }
             _ => return Err("v2_ext requires --profile blob-ext-1, blob-ext-14, or blob-ext-16".into()),
         };
@@ -188,8 +374,41 @@ impl Cli {
             ProfileName::BlobExt14 => v3_ext::ExtProfile::BLOB_EXT_14,
             ProfileName::BlobExt16 => v3_ext::ExtProfile::BLOB_EXT_16,
             ProfileName::BlobExt2x1 => v3_ext::ExtProfile::BLOB_EXT_2X_1,
+            ProfileName::BlobExt2x2 => v3_ext::ExtProfile::BLOB_EXT_2X_2,
+            ProfileName::BlobExt2x4 => v3_ext::ExtProfile::BLOB_EXT_2X_4,
+            ProfileName::BlobExt2x6 => v3_ext::ExtProfile::BLOB_EXT_2X_6,
+            ProfileName::BlobExt2x8 => v3_ext::ExtProfile::BLOB_EXT_2X_8,
+            ProfileName::BlobExt2x10 => v3_ext::ExtProfile::BLOB_EXT_2X_10,
+            ProfileName::BlobExt2x12 => v3_ext::ExtProfile::BLOB_EXT_2X_12,
             ProfileName::BlobExt2x14 => v3_ext::ExtProfile::BLOB_EXT_2X_14,
             ProfileName::BlobExt2x16 => v3_ext::ExtProfile::BLOB_EXT_2X_16,
+            ProfileName::BlobExt2xC16_14 => v3_ext::ExtProfile::BLOB_EXT_2X_C16_14,
+            ProfileName::BlobExt2xC64_1 => v3_ext::ExtProfile::BLOB_EXT_2X_C64_1,
+            ProfileName::BlobExt2xC64_14 => v3_ext::ExtProfile::BLOB_EXT_2X_C64_14,
+            ProfileName::BlobExt2xC64_16 => v3_ext::ExtProfile::BLOB_EXT_2X_C64_16,
+            ProfileName::BlobExt2xC128_1 => v3_ext::ExtProfile::BLOB_EXT_2X_C128_1,
+            ProfileName::BlobExt2xC128_14 => v3_ext::ExtProfile::BLOB_EXT_2X_C128_14,
+            ProfileName::BlobExt2xC128_16 => v3_ext::ExtProfile::BLOB_EXT_2X_C128_16,
+            ProfileName::BlobExt4x1 => v3_ext::ExtProfile::BLOB_EXT_4X_1,
+            ProfileName::BlobExt4x2 => v3_ext::ExtProfile::BLOB_EXT_4X_2,
+            ProfileName::BlobExt4x4 => v3_ext::ExtProfile::BLOB_EXT_4X_4,
+            ProfileName::BlobExt4x6 => v3_ext::ExtProfile::BLOB_EXT_4X_6,
+            ProfileName::BlobExt4x8 => v3_ext::ExtProfile::BLOB_EXT_4X_8,
+            ProfileName::BlobExt4x10 => v3_ext::ExtProfile::BLOB_EXT_4X_10,
+            ProfileName::BlobExt4x12 => v3_ext::ExtProfile::BLOB_EXT_4X_12,
+            ProfileName::BlobExt4x14 => v3_ext::ExtProfile::BLOB_EXT_4X_14,
+            ProfileName::BlobExt4x16 => v3_ext::ExtProfile::BLOB_EXT_4X_16,
+            ProfileName::BlobExt4xC16_14 => v3_ext::ExtProfile::BLOB_EXT_4X_C16_14,
+            ProfileName::BlobExt4xC32_1 => v3_ext::ExtProfile::BLOB_EXT_4X_C32_1,
+            ProfileName::BlobExt4xC32_2 => v3_ext::ExtProfile::BLOB_EXT_4X_C32_2,
+            ProfileName::BlobExt4xC32_4 => v3_ext::ExtProfile::BLOB_EXT_4X_C32_4,
+            ProfileName::BlobExt4xC32_6 => v3_ext::ExtProfile::BLOB_EXT_4X_C32_6,
+            ProfileName::BlobExt4xC32_8 => v3_ext::ExtProfile::BLOB_EXT_4X_C32_8,
+            ProfileName::BlobExt4xC32_10 => v3_ext::ExtProfile::BLOB_EXT_4X_C32_10,
+            ProfileName::BlobExt4xC32_12 => v3_ext::ExtProfile::BLOB_EXT_4X_C32_12,
+            ProfileName::BlobExt4xC32_14 => v3_ext::ExtProfile::BLOB_EXT_4X_C32_14,
+            ProfileName::BlobExt4xC32_16 => v3_ext::ExtProfile::BLOB_EXT_4X_C32_16,
+            ProfileName::BlobExt4xC128_14 => v3_ext::ExtProfile::BLOB_EXT_4X_C128_14,
             _ => return Err("v3_ext requires an extension profile".into()),
         };
         profile.whir_log_inv_rate = self.whir_log_inv_rate;
@@ -215,6 +434,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if cli.all_v3_ext_benchmarks {
         run_all_v3_ext_benchmarks(cli.skip_reconstruction)?;
+        return Ok(());
+    }
+    if cli.v3_ext_blob_size_sweep {
+        run_v3_ext_blob_size_sweep(cli.skip_reconstruction)?;
+        return Ok(());
+    }
+    if cli.v3_ext_cell_size_sweep {
+        run_v3_ext_cell_size_sweep(cli.skip_reconstruction)?;
+        return Ok(());
+    }
+    if cli.v3_ext_row_count_sweep {
+        run_v3_ext_row_count_sweep(cli.skip_reconstruction)?;
+        return Ok(());
+    }
+    if cli.v3_ext_whir_rate_sweep {
+        run_v3_ext_whir_rate_sweep(cli.skip_reconstruction)?;
+        return Ok(());
+    }
+    if cli.all_v3_ext_cellsize_benchmarks {
+        run_all_v3_ext_cellsize_benchmarks(cli.skip_reconstruction)?;
+        return Ok(());
+    }
+    if cli.v3_ext_4x_cell_size_sweep {
+        run_v3_ext_4x_cell_size_sweep(cli.skip_reconstruction)?;
+        return Ok(());
+    }
+    if cli.all_v3_ext_4x_cellsize_benchmarks {
+        run_all_v3_ext_4x_cellsize_benchmarks(cli.skip_reconstruction)?;
+        return Ok(());
+    }
+    if cli.all_v3_ext_2x_row_benchmarks {
+        run_all_v3_ext_2x_row_benchmarks(cli.skip_reconstruction)?;
+        return Ok(());
+    }
+    if cli.v3_ext_4x_row_count_sweep {
+        run_v3_ext_4x_row_count_sweep(cli.skip_reconstruction)?;
+        return Ok(());
+    }
+    if cli.all_v3_ext_4x_row_benchmarks {
+        run_all_v3_ext_4x_row_benchmarks(cli.skip_reconstruction)?;
         return Ok(());
     }
 
@@ -323,6 +582,197 @@ fn run_all_v3_ext_benchmarks(skip_reconstruction: bool) -> Result<(), Box<dyn st
         v3_ext::ExtProfile::BLOB_EXT_2X_1,
         v3_ext::ExtProfile::BLOB_EXT_2X_14,
         v3_ext::ExtProfile::BLOB_EXT_2X_16,
+        v3_ext::ExtProfile::BLOB_EXT_4X_1,
+        v3_ext::ExtProfile::BLOB_EXT_4X_14,
+        v3_ext::ExtProfile::BLOB_EXT_4X_16,
+    ];
+    let mut results = Vec::with_capacity(profiles.len());
+    for profile in profiles {
+        results.push(run_v3_ext_benchmark(profile, skip_reconstruction)?);
+    }
+    print_v3_ext_table(&results);
+    Ok(())
+}
+
+/// Runs the V3-ext blob-size sweep with ell=1024 and n=14 fixed.
+fn run_v3_ext_blob_size_sweep(skip_reconstruction: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let profiles = [
+        v3_ext::ExtProfile::BLOB_EXT_14,
+        v3_ext::ExtProfile::BLOB_EXT_2X_14,
+        v3_ext::ExtProfile::BLOB_EXT_4X_14,
+    ];
+    let mut results = Vec::with_capacity(profiles.len());
+    for profile in profiles {
+        results.push(run_v3_ext_benchmark(profile, skip_reconstruction)?);
+    }
+    print_v3_ext_table(&results);
+    Ok(())
+}
+
+/// Runs the V3-ext cell-size sweep with 2x blob size and n=14 fixed.
+fn run_v3_ext_cell_size_sweep(skip_reconstruction: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let profiles = [
+        v3_ext::ExtProfile::BLOB_EXT_2X_C16_14,
+        v3_ext::ExtProfile::BLOB_EXT_2X_14,
+        v3_ext::ExtProfile::BLOB_EXT_2X_C64_14,
+        v3_ext::ExtProfile::BLOB_EXT_2X_C128_14,
+    ];
+    let mut results = Vec::with_capacity(profiles.len());
+    for profile in profiles {
+        results.push(run_v3_ext_benchmark(profile, skip_reconstruction)?);
+    }
+    print_v3_ext_table(&results);
+    Ok(())
+}
+
+/// Runs the V3-ext row-count sweep with 2x blob size and c=32 fixed.
+fn run_v3_ext_row_count_sweep(skip_reconstruction: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let profiles = [
+        v3_ext::ExtProfile::BLOB_EXT_2X_1,
+        v3_ext::ExtProfile::BLOB_EXT_2X_2,
+        v3_ext::ExtProfile::BLOB_EXT_2X_4,
+        v3_ext::ExtProfile::BLOB_EXT_2X_6,
+        v3_ext::ExtProfile::BLOB_EXT_2X_8,
+        v3_ext::ExtProfile::BLOB_EXT_2X_10,
+        v3_ext::ExtProfile::BLOB_EXT_2X_12,
+        v3_ext::ExtProfile::BLOB_EXT_2X_14,
+        v3_ext::ExtProfile::BLOB_EXT_2X_16,
+    ];
+    let mut results = Vec::with_capacity(profiles.len());
+    for profile in profiles {
+        results.push(run_v3_ext_benchmark(profile, skip_reconstruction)?);
+    }
+    print_v3_ext_table(&results);
+    Ok(())
+}
+
+/// Runs the V3-ext WHIR-rate sweep that is valid under the default WHIR folding factors.
+fn run_v3_ext_whir_rate_sweep(skip_reconstruction: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let base_profiles = [v3_ext::ExtProfile::BLOB_EXT_2X_14, v3_ext::ExtProfile::BLOB_EXT_4X_14];
+    let whir_log_inv_rates = [1, 2];
+    let mut results = Vec::with_capacity(base_profiles.len() * whir_log_inv_rates.len());
+    for base_profile in base_profiles {
+        for whir_log_inv_rate in whir_log_inv_rates {
+            let mut profile = base_profile;
+            profile.whir_log_inv_rate = whir_log_inv_rate;
+            results.push(run_v3_ext_benchmark(profile, skip_reconstruction)?);
+        }
+    }
+    print_v3_ext_table(&results);
+    Ok(())
+}
+
+/// Runs the V3-ext double-blob cell-size comparison for c=32, c=64, and c=128.
+fn run_all_v3_ext_cellsize_benchmarks(skip_reconstruction: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let profiles = [
+        v3_ext::ExtProfile::BLOB_EXT_2X_1,
+        v3_ext::ExtProfile::BLOB_EXT_2X_14,
+        v3_ext::ExtProfile::BLOB_EXT_2X_16,
+        v3_ext::ExtProfile::BLOB_EXT_2X_C64_1,
+        v3_ext::ExtProfile::BLOB_EXT_2X_C64_14,
+        v3_ext::ExtProfile::BLOB_EXT_2X_C64_16,
+        v3_ext::ExtProfile::BLOB_EXT_2X_C128_1,
+        v3_ext::ExtProfile::BLOB_EXT_2X_C128_14,
+        v3_ext::ExtProfile::BLOB_EXT_2X_C128_16,
+    ];
+    let mut results = Vec::with_capacity(profiles.len());
+    for profile in profiles {
+        results.push(run_v3_ext_benchmark(profile, skip_reconstruction)?);
+    }
+    print_v3_ext_table(&results);
+    Ok(())
+}
+
+/// Runs the V3-ext 4x cell-size comparison for c=32 and c=64.
+fn run_v3_ext_4x_cell_size_sweep(skip_reconstruction: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let profiles = [
+        v3_ext::ExtProfile::BLOB_EXT_4X_C16_14,
+        v3_ext::ExtProfile::BLOB_EXT_4X_C32_14,
+        v3_ext::ExtProfile::BLOB_EXT_4X_14,
+        v3_ext::ExtProfile::BLOB_EXT_4X_C128_14,
+    ];
+    let mut results = Vec::with_capacity(profiles.len());
+    for profile in profiles {
+        results.push(run_v3_ext_benchmark(profile, skip_reconstruction)?);
+    }
+    print_v3_ext_table(&results);
+    Ok(())
+}
+
+/// Runs the V3-ext 4x cell-size comparison for c=16, c=32, c=64, and c=128.
+fn run_all_v3_ext_4x_cellsize_benchmarks(skip_reconstruction: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let profiles = [
+        v3_ext::ExtProfile::BLOB_EXT_4X_C16_14,
+        v3_ext::ExtProfile::BLOB_EXT_4X_C32_1,
+        v3_ext::ExtProfile::BLOB_EXT_4X_C32_14,
+        v3_ext::ExtProfile::BLOB_EXT_4X_C32_16,
+        v3_ext::ExtProfile::BLOB_EXT_4X_1,
+        v3_ext::ExtProfile::BLOB_EXT_4X_14,
+        v3_ext::ExtProfile::BLOB_EXT_4X_16,
+        v3_ext::ExtProfile::BLOB_EXT_4X_C128_14,
+    ];
+    let mut results = Vec::with_capacity(profiles.len());
+    for profile in profiles {
+        results.push(run_v3_ext_benchmark(profile, skip_reconstruction)?);
+    }
+    print_v3_ext_table(&results);
+    Ok(())
+}
+
+/// Runs the V3-ext 2x row-count sweep for n=1,2,4,6,8,10,12,14,16.
+fn run_all_v3_ext_2x_row_benchmarks(skip_reconstruction: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let profiles = [
+        v3_ext::ExtProfile::BLOB_EXT_2X_1,
+        v3_ext::ExtProfile::BLOB_EXT_2X_2,
+        v3_ext::ExtProfile::BLOB_EXT_2X_4,
+        v3_ext::ExtProfile::BLOB_EXT_2X_6,
+        v3_ext::ExtProfile::BLOB_EXT_2X_8,
+        v3_ext::ExtProfile::BLOB_EXT_2X_10,
+        v3_ext::ExtProfile::BLOB_EXT_2X_12,
+        v3_ext::ExtProfile::BLOB_EXT_2X_14,
+        v3_ext::ExtProfile::BLOB_EXT_2X_16,
+    ];
+    let mut results = Vec::with_capacity(profiles.len());
+    for profile in profiles {
+        results.push(run_v3_ext_benchmark(profile, skip_reconstruction)?);
+    }
+    print_v3_ext_table(&results);
+    Ok(())
+}
+
+/// Runs the V3-ext 4x-c32 row-count sweep for n=1,2,4,6,8,10,12,14,16.
+fn run_v3_ext_4x_row_count_sweep(skip_reconstruction: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let profiles = [
+        v3_ext::ExtProfile::BLOB_EXT_4X_C32_1,
+        v3_ext::ExtProfile::BLOB_EXT_4X_C32_2,
+        v3_ext::ExtProfile::BLOB_EXT_4X_C32_4,
+        v3_ext::ExtProfile::BLOB_EXT_4X_C32_6,
+        v3_ext::ExtProfile::BLOB_EXT_4X_C32_8,
+        v3_ext::ExtProfile::BLOB_EXT_4X_C32_10,
+        v3_ext::ExtProfile::BLOB_EXT_4X_C32_12,
+        v3_ext::ExtProfile::BLOB_EXT_4X_C32_14,
+        v3_ext::ExtProfile::BLOB_EXT_4X_C32_16,
+    ];
+    let mut results = Vec::with_capacity(profiles.len());
+    for profile in profiles {
+        results.push(run_v3_ext_benchmark(profile, skip_reconstruction)?);
+    }
+    print_v3_ext_table(&results);
+    Ok(())
+}
+
+/// Runs the V3-ext 4x-c32 row-count sweep for n=1,2,4,6,8,10,12,14,16.
+fn run_all_v3_ext_4x_row_benchmarks(skip_reconstruction: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let profiles = [
+        v3_ext::ExtProfile::BLOB_EXT_4X_C32_1,
+        v3_ext::ExtProfile::BLOB_EXT_4X_C32_2,
+        v3_ext::ExtProfile::BLOB_EXT_4X_C32_4,
+        v3_ext::ExtProfile::BLOB_EXT_4X_C32_6,
+        v3_ext::ExtProfile::BLOB_EXT_4X_C32_8,
+        v3_ext::ExtProfile::BLOB_EXT_4X_C32_10,
+        v3_ext::ExtProfile::BLOB_EXT_4X_C32_12,
+        v3_ext::ExtProfile::BLOB_EXT_4X_C32_14,
+        v3_ext::ExtProfile::BLOB_EXT_4X_C32_16,
     ];
     let mut results = Vec::with_capacity(profiles.len());
     for profile in profiles {
@@ -705,10 +1155,10 @@ fn print_v3_ext_report(result: &v3_ext::ExtBenchmarkResult) {
 fn print_v3_ext_table(results: &[v3_ext::ExtBenchmarkResult]) {
     println!("PQ-DAS V3-ext LeanVM benchmark table");
     println!(
-        "| Profile | Bytecode instructions | Read-only elements | Opened cells | $\\log_2\\nu_{{\\mathrm{{rep}}}}$ | Commitment size | Proof size | Sample size | Encode + commit | Prover preprocess | LeanVM prove | Opening generation | Verifier rebuild | LeanVM verify | Verify openings | Reconstruct | VM cycles | Poseidon16 calls | ExtensionOp calls | Result |"
+        r"| Profile | WHIR log inv rate | Bytecode instructions | Read-only elements | Opened cells | $\log_2\nu_{{\mathrm{{rep}}}}$ | Commitment size | Proof size | Sample size | Encode + commit | Prover preprocess | LeanVM prove | Opening generation | Verifier rebuild | LeanVM verify | Verify openings | Reconstruct | VM cycles | Poseidon16 calls | ExtensionOp calls | Result |"
     );
     println!(
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"
     );
     for result in results {
         println!("{}", v3_ext_row(result));
@@ -836,8 +1286,9 @@ fn v3_ext_row(result: &v3_ext::ExtBenchmarkResult) -> String {
     };
     let ok = result.accepted && result.reconstruction.unwrap_or(true);
     format!(
-        "| {} | {} | {} | {} | {:.3} | {} KB | {} KB | {} KB | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {} | {} | {} | {} | {} |",
+        "| {} | {} | {} | {} | {} | {:.3} | {} KB | {} KB | {} KB | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {} | {} | {} | {} | {} |",
         profile.name,
+        profile.whir_log_inv_rate,
         result.prepared.bytecode.size(),
         result.prepared.bytecode.read_only_data().len(),
         result.opened_cells,

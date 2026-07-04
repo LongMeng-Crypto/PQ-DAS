@@ -111,11 +111,51 @@ def hash_cell_20_chunks(cell):
     return out
 
 
+def hash_cell_40_chunks(cell):
+    states = Array(38 * DIGEST_LEN)
+    poseidon16_compress_half(cell, cell + DIGEST_LEN, states)
+    for chunk in unroll(1, 38):
+        poseidon16_compress_half(
+            states + (chunk - 1) * DIGEST_LEN,
+            cell + (chunk + 1) * DIGEST_LEN,
+            states + chunk * DIGEST_LEN,
+        )
+    out = Array(DIGEST_LEN)
+    poseidon16_compress_half(
+        states + 37 * DIGEST_LEN,
+        cell + 39 * DIGEST_LEN,
+        out,
+    )
+    return out
+
+
+def hash_cell_80_chunks(cell):
+    states = Array(78 * DIGEST_LEN)
+    poseidon16_compress_half(cell, cell + DIGEST_LEN, states)
+    for chunk in unroll(1, 78):
+        poseidon16_compress_half(
+            states + (chunk - 1) * DIGEST_LEN,
+            cell + (chunk + 1) * DIGEST_LEN,
+            states + chunk * DIGEST_LEN,
+        )
+    out = Array(DIGEST_LEN)
+    poseidon16_compress_half(
+        states + 77 * DIGEST_LEN,
+        cell + 79 * DIGEST_LEN,
+        out,
+    )
+    return out
+
+
 def hash_cell(cell):
     if CELL_CHUNKS == 10:
         return hash_cell_10_chunks(cell)
     if CELL_CHUNKS == 20:
         return hash_cell_20_chunks(cell)
+    if CELL_CHUNKS == 40:
+        return hash_cell_40_chunks(cell)
+    if CELL_CHUNKS == 80:
+        return hash_cell_80_chunks(cell)
     return hash_contiguous_chunks(cell, CELL_CHUNKS)
 
 
