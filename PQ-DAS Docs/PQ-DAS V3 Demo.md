@@ -5,7 +5,7 @@
 table th, table td { white-space: nowrap; }
 </style>
 
-V3 keeps the V2 cell-digest commitment path, but replaces the public commitment components with one final digest. The row hashes are Merkle-aggregated into $root_{\rm row}$, the column roots are Merkle-aggregated into $root_{\rm col}$, and the public commitment is $root=H(root_{\rm row},root_{\rm col})$. This document now records the current benchmark organization: old V1/V2/V3-base results are kept as baselines, and the main V3-ext section is organized as one-variable-at-a-time parameter sweeps.
+V3 keeps the V2 cell-digest commitment path, but replaces the public commitment components with one final digest. The row hashes are Merkle-aggregated into $\mathsf{root}_{\rm row}$, the column roots are Merkle-aggregated into $\mathsf{root}_{\rm col}$, and the public commitment is $\mathsf{root}=\mathsf{H}(\mathsf{root}_{\rm row},\mathsf{root}_{\rm col})$. This document now records the current benchmark organization: old V1/V2/V3-base results are kept as baselines, and the main V3-ext section is organized as one-variable-at-a-time parameter sweeps. Current implementation branch: [LongMeng-Crypto/PQ-DAS `V2/V3-Demo`](https://github.com/LongMeng-Crypto/PQ-DAS/tree/V2%2FV3-Demo).
 
 
 ## Benchmark Naming
