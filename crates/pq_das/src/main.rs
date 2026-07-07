@@ -1243,7 +1243,7 @@ fn print_v3_ext_report(result: &v3_ext::ExtBenchmarkResult) {
 fn print_v3_ext_table(results: &[v3_ext::ExtBenchmarkResult]) {
     println!("PQ-DAS V3-ext LeanVM benchmark table");
     println!(
-        r"| Profile | WHIR log inv rate | Bytecode instructions | Read-only elements | Opened cells | $\log_2\nu_{{\mathrm{{rep}}}}$ | Commitment size | Proof size | Sample size | Encode + commit | Prover preprocess | LeanVM prove | Opening generation | Verifier rebuild | LeanVM verify | Verify openings | Reconstruct | LeanVM proving throughput | Full DAS throughput | VM cycles | Poseidon16 calls | ExtensionOp calls | Result |"
+        r"| Profile | WHIR log inv rate | Bytecode instructions | Read-only elements | Opened cells | $\log_2\nu_{{\mathrm{{rep}}}}$ | Commitment size | Proof size | Sample size | Encode + commit | Prover preprocess | LeanVM prove | Opening generation | Verifier rebuild | LeanVM verify | Verify openings | Reconstruct | VM cycles | Poseidon16 calls | ExtensionOp calls | LeanVM proving throughput | Full DAS throughput | Result |"
     );
     println!(
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"
@@ -1378,7 +1378,7 @@ fn v3_ext_row(result: &v3_ext::ExtBenchmarkResult) -> String {
     let leanvm_throughput = throughput_kib_per_sec(v3_ext_payload_bytes(profile), result.timings.prove.as_secs_f64());
     let full_throughput = full_das_throughput_kib_per_sec(result, commitment_bytes, proof_bytes, sample_bytes);
     format!(
-        "| {} | {} | {} | {} | {} | {:.3} | {} KB | {} KB | {} KB | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {} | {:.2} KiB/s | {:.2} KiB/s | {} | {} | {} | {} |",
+        "| {} | {} | {} | {} | {} | {:.3} | {} KB | {} KB | {} KB | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {} | {} | {} | {} | {:.2} KiB/s | {:.2} KiB/s | {} |",
         profile.name,
         profile.whir_log_inv_rate,
         result.prepared.bytecode.size(),
@@ -1396,11 +1396,11 @@ fn v3_ext_row(result: &v3_ext::ExtBenchmarkResult) -> String {
         result.timings.proof_verify.as_secs_f64(),
         result.timings.verify_openings.as_secs_f64(),
         reconstruction,
-        leanvm_throughput,
-        full_throughput,
         metadata.map(|m| m.cycles).unwrap_or_default(),
         metadata.map(|m| m.n_poseidons).unwrap_or_default(),
         metadata.map(|m| m.n_extension_ops).unwrap_or_default(),
+        leanvm_throughput,
+        full_throughput,
         if ok { "accepted" } else { "failed" },
     )
 }
