@@ -61,6 +61,22 @@ enum ProfileName {
     BlobExt2x14,
     #[value(name = "blob-ext-2x-16")]
     BlobExt2x16,
+    #[value(name = "blob-ext-2x-18")]
+    BlobExt2x18,
+    #[value(name = "blob-ext-2x-20")]
+    BlobExt2x20,
+    #[value(name = "blob-ext-2x-22")]
+    BlobExt2x22,
+    #[value(name = "blob-ext-2x-24")]
+    BlobExt2x24,
+    #[value(name = "blob-ext-2x-26")]
+    BlobExt2x26,
+    #[value(name = "blob-ext-2x-28")]
+    BlobExt2x28,
+    #[value(name = "blob-ext-2x-30")]
+    BlobExt2x30,
+    #[value(name = "blob-ext-2x-32")]
+    BlobExt2x32,
     #[value(name = "blob-ext-2x-c16-14")]
     BlobExt2xC16_14,
     #[value(name = "blob-ext-2x-c64-1")]
@@ -113,6 +129,22 @@ enum ProfileName {
     BlobExt4xC32_14,
     #[value(name = "blob-ext-4x-c32-16")]
     BlobExt4xC32_16,
+    #[value(name = "blob-ext-4x-c32-18")]
+    BlobExt4xC32_18,
+    #[value(name = "blob-ext-4x-c32-20")]
+    BlobExt4xC32_20,
+    #[value(name = "blob-ext-4x-c32-22")]
+    BlobExt4xC32_22,
+    #[value(name = "blob-ext-4x-c32-24")]
+    BlobExt4xC32_24,
+    #[value(name = "blob-ext-4x-c32-26")]
+    BlobExt4xC32_26,
+    #[value(name = "blob-ext-4x-c32-28")]
+    BlobExt4xC32_28,
+    #[value(name = "blob-ext-4x-c32-30")]
+    BlobExt4xC32_30,
+    #[value(name = "blob-ext-4x-c32-32")]
+    BlobExt4xC32_32,
     #[value(name = "blob-ext-4x-c128-14")]
     BlobExt4xC128_14,
     Custom,
@@ -188,13 +220,13 @@ struct Cli {
 
     #[arg(
         long = "v3-ext-row-count-sweep",
-        help = "Run V3-ext 2x, c=32 profiles for n=1,2,4,6,8,10,12,14,16"
+        help = "Run V3-ext 2x, c=32 profiles for n=1,2,4,6,...,32"
     )]
     v3_ext_row_count_sweep: bool,
 
     #[arg(
         long = "v3-ext-whir-rate-sweep",
-        help = "Run V3-ext blob-ext-2x-14 and blob-ext-4x-14 with WHIR log inverse rates 1 and 2"
+        help = "Run V3-ext blob-ext-2x-14 and blob-ext-4x-14 with supported WHIR log inverse rates 1 and 2"
     )]
     v3_ext_whir_rate_sweep: bool,
 
@@ -218,19 +250,19 @@ struct Cli {
 
     #[arg(
         long = "all-v3-ext-2x-row-benchmarks",
-        help = "Run V3-ext 2x profiles for n=1,2,4,6,8,10,12,14,16"
+        help = "Run V3-ext 2x profiles for n=1,2,4,6,...,32"
     )]
     all_v3_ext_2x_row_benchmarks: bool,
 
     #[arg(
         long = "v3-ext-4x-row-count-sweep",
-        help = "Run V3-ext 4x, c=32 profiles for n=1,2,4,6,8,10,12,14,16"
+        help = "Run V3-ext 4x, c=32 profiles for n=1,2,4,6,...,32"
     )]
     v3_ext_4x_row_count_sweep: bool,
 
     #[arg(
         long = "all-v3-ext-4x-row-benchmarks",
-        help = "Run V3-ext 4x-c32 profiles for n=1,2,4,6,8,10,12,14,16"
+        help = "Run V3-ext 4x-c32 profiles for n=1,2,4,6,...,32"
     )]
     all_v3_ext_4x_row_benchmarks: bool,
 
@@ -283,6 +315,14 @@ impl Cli {
             | ProfileName::BlobExt2x12
             | ProfileName::BlobExt2x14
             | ProfileName::BlobExt2x16
+            | ProfileName::BlobExt2x18
+            | ProfileName::BlobExt2x20
+            | ProfileName::BlobExt2x22
+            | ProfileName::BlobExt2x24
+            | ProfileName::BlobExt2x26
+            | ProfileName::BlobExt2x28
+            | ProfileName::BlobExt2x30
+            | ProfileName::BlobExt2x32
             | ProfileName::BlobExt2xC16_14
             | ProfileName::BlobExt2xC64_1
             | ProfileName::BlobExt2xC64_14
@@ -309,6 +349,14 @@ impl Cli {
             | ProfileName::BlobExt4xC32_12
             | ProfileName::BlobExt4xC32_14
             | ProfileName::BlobExt4xC32_16
+            | ProfileName::BlobExt4xC32_18
+            | ProfileName::BlobExt4xC32_20
+            | ProfileName::BlobExt4xC32_22
+            | ProfileName::BlobExt4xC32_24
+            | ProfileName::BlobExt4xC32_26
+            | ProfileName::BlobExt4xC32_28
+            | ProfileName::BlobExt4xC32_30
+            | ProfileName::BlobExt4xC32_32
             | ProfileName::BlobExt4xC128_14 => {
                 return Err("extension profiles require --version v2_ext or --version v3_ext".into());
             }
@@ -340,6 +388,14 @@ impl Cli {
             | ProfileName::BlobExt2x12
             | ProfileName::BlobExt2x14
             | ProfileName::BlobExt2x16
+            | ProfileName::BlobExt2x18
+            | ProfileName::BlobExt2x20
+            | ProfileName::BlobExt2x22
+            | ProfileName::BlobExt2x24
+            | ProfileName::BlobExt2x26
+            | ProfileName::BlobExt2x28
+            | ProfileName::BlobExt2x30
+            | ProfileName::BlobExt2x32
             | ProfileName::BlobExt2xC16_14
             | ProfileName::BlobExt2xC64_1
             | ProfileName::BlobExt2xC64_14
@@ -382,6 +438,14 @@ impl Cli {
             ProfileName::BlobExt2x12 => v3_ext::ExtProfile::BLOB_EXT_2X_12,
             ProfileName::BlobExt2x14 => v3_ext::ExtProfile::BLOB_EXT_2X_14,
             ProfileName::BlobExt2x16 => v3_ext::ExtProfile::BLOB_EXT_2X_16,
+            ProfileName::BlobExt2x18 => v3_ext::ExtProfile::BLOB_EXT_2X_18,
+            ProfileName::BlobExt2x20 => v3_ext::ExtProfile::BLOB_EXT_2X_20,
+            ProfileName::BlobExt2x22 => v3_ext::ExtProfile::BLOB_EXT_2X_22,
+            ProfileName::BlobExt2x24 => v3_ext::ExtProfile::BLOB_EXT_2X_24,
+            ProfileName::BlobExt2x26 => v3_ext::ExtProfile::BLOB_EXT_2X_26,
+            ProfileName::BlobExt2x28 => v3_ext::ExtProfile::BLOB_EXT_2X_28,
+            ProfileName::BlobExt2x30 => v3_ext::ExtProfile::BLOB_EXT_2X_30,
+            ProfileName::BlobExt2x32 => v3_ext::ExtProfile::BLOB_EXT_2X_32,
             ProfileName::BlobExt2xC16_14 => v3_ext::ExtProfile::BLOB_EXT_2X_C16_14,
             ProfileName::BlobExt2xC64_1 => v3_ext::ExtProfile::BLOB_EXT_2X_C64_1,
             ProfileName::BlobExt2xC64_14 => v3_ext::ExtProfile::BLOB_EXT_2X_C64_14,
@@ -408,6 +472,14 @@ impl Cli {
             ProfileName::BlobExt4xC32_12 => v3_ext::ExtProfile::BLOB_EXT_4X_C32_12,
             ProfileName::BlobExt4xC32_14 => v3_ext::ExtProfile::BLOB_EXT_4X_C32_14,
             ProfileName::BlobExt4xC32_16 => v3_ext::ExtProfile::BLOB_EXT_4X_C32_16,
+            ProfileName::BlobExt4xC32_18 => v3_ext::ExtProfile::BLOB_EXT_4X_C32_18,
+            ProfileName::BlobExt4xC32_20 => v3_ext::ExtProfile::BLOB_EXT_4X_C32_20,
+            ProfileName::BlobExt4xC32_22 => v3_ext::ExtProfile::BLOB_EXT_4X_C32_22,
+            ProfileName::BlobExt4xC32_24 => v3_ext::ExtProfile::BLOB_EXT_4X_C32_24,
+            ProfileName::BlobExt4xC32_26 => v3_ext::ExtProfile::BLOB_EXT_4X_C32_26,
+            ProfileName::BlobExt4xC32_28 => v3_ext::ExtProfile::BLOB_EXT_4X_C32_28,
+            ProfileName::BlobExt4xC32_30 => v3_ext::ExtProfile::BLOB_EXT_4X_C32_30,
+            ProfileName::BlobExt4xC32_32 => v3_ext::ExtProfile::BLOB_EXT_4X_C32_32,
             ProfileName::BlobExt4xC128_14 => v3_ext::ExtProfile::BLOB_EXT_4X_C128_14,
             _ => return Err("v3_ext requires an extension profile".into()),
         };
@@ -637,6 +709,14 @@ fn run_v3_ext_row_count_sweep(skip_reconstruction: bool) -> Result<(), Box<dyn s
         v3_ext::ExtProfile::BLOB_EXT_2X_12,
         v3_ext::ExtProfile::BLOB_EXT_2X_14,
         v3_ext::ExtProfile::BLOB_EXT_2X_16,
+        v3_ext::ExtProfile::BLOB_EXT_2X_18,
+        v3_ext::ExtProfile::BLOB_EXT_2X_20,
+        v3_ext::ExtProfile::BLOB_EXT_2X_22,
+        v3_ext::ExtProfile::BLOB_EXT_2X_24,
+        v3_ext::ExtProfile::BLOB_EXT_2X_26,
+        v3_ext::ExtProfile::BLOB_EXT_2X_28,
+        v3_ext::ExtProfile::BLOB_EXT_2X_30,
+        v3_ext::ExtProfile::BLOB_EXT_2X_32,
     ];
     let mut results = Vec::with_capacity(profiles.len());
     for profile in profiles {
@@ -719,7 +799,7 @@ fn run_all_v3_ext_4x_cellsize_benchmarks(skip_reconstruction: bool) -> Result<()
     Ok(())
 }
 
-/// Runs the V3-ext 2x row-count sweep for n=1,2,4,6,8,10,12,14,16.
+/// Runs the V3-ext 2x row-count sweep for n=1,2,4,6,...,32.
 fn run_all_v3_ext_2x_row_benchmarks(skip_reconstruction: bool) -> Result<(), Box<dyn std::error::Error>> {
     let profiles = [
         v3_ext::ExtProfile::BLOB_EXT_2X_1,
@@ -731,6 +811,14 @@ fn run_all_v3_ext_2x_row_benchmarks(skip_reconstruction: bool) -> Result<(), Box
         v3_ext::ExtProfile::BLOB_EXT_2X_12,
         v3_ext::ExtProfile::BLOB_EXT_2X_14,
         v3_ext::ExtProfile::BLOB_EXT_2X_16,
+        v3_ext::ExtProfile::BLOB_EXT_2X_18,
+        v3_ext::ExtProfile::BLOB_EXT_2X_20,
+        v3_ext::ExtProfile::BLOB_EXT_2X_22,
+        v3_ext::ExtProfile::BLOB_EXT_2X_24,
+        v3_ext::ExtProfile::BLOB_EXT_2X_26,
+        v3_ext::ExtProfile::BLOB_EXT_2X_28,
+        v3_ext::ExtProfile::BLOB_EXT_2X_30,
+        v3_ext::ExtProfile::BLOB_EXT_2X_32,
     ];
     let mut results = Vec::with_capacity(profiles.len());
     for profile in profiles {
@@ -1155,10 +1243,10 @@ fn print_v3_ext_report(result: &v3_ext::ExtBenchmarkResult) {
 fn print_v3_ext_table(results: &[v3_ext::ExtBenchmarkResult]) {
     println!("PQ-DAS V3-ext LeanVM benchmark table");
     println!(
-        r"| Profile | WHIR log inv rate | Bytecode instructions | Read-only elements | Opened cells | $\log_2\nu_{{\mathrm{{rep}}}}$ | Commitment size | Proof size | Sample size | Encode + commit | Prover preprocess | LeanVM prove | Opening generation | Verifier rebuild | LeanVM verify | Verify openings | Reconstruct | VM cycles | Poseidon16 calls | ExtensionOp calls | Result |"
+        r"| Profile | WHIR log inv rate | Bytecode instructions | Read-only elements | Opened cells | $\log_2\nu_{{\mathrm{{rep}}}}$ | Commitment size | Proof size | Sample size | Encode + commit | Prover preprocess | LeanVM prove | Opening generation | Verifier rebuild | LeanVM verify | Verify openings | Reconstruct | LeanVM proving throughput | Full DAS throughput | VM cycles | Poseidon16 calls | ExtensionOp calls | Result |"
     );
     println!(
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"
     );
     for result in results {
         println!("{}", v3_ext_row(result));
@@ -1278,6 +1366,8 @@ fn v3_ext_row(result: &v3_ext::ExtBenchmarkResult) -> String {
     let profile = result.profile;
     let proof_field_elements = result.proof.execution.proof.proof_size_fe();
     let proof_bytes = proof_field_elements * size_of::<u32>();
+    let commitment_bytes = v3_ext::commitment_size_bytes(&result.commitment);
+    let sample_bytes = v3_ext::transcript_size_bytes(&result.transcript);
     let metadata = result.proof.execution.metadata.as_ref();
     let reconstruction = match result.reconstruction {
         Some(true) => format_duration(result.timings.reconstruct),
@@ -1285,17 +1375,19 @@ fn v3_ext_row(result: &v3_ext::ExtBenchmarkResult) -> String {
         None => "skipped".to_string(),
     };
     let ok = result.accepted && result.reconstruction.unwrap_or(true);
+    let leanvm_throughput = throughput_kib_per_sec(v3_ext_payload_bytes(profile), result.timings.prove.as_secs_f64());
+    let full_throughput = full_das_throughput_kib_per_sec(result, commitment_bytes, proof_bytes, sample_bytes);
     format!(
-        "| {} | {} | {} | {} | {} | {:.3} | {} KB | {} KB | {} KB | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {} | {} | {} | {} | {} |",
+        "| {} | {} | {} | {} | {} | {:.3} | {} KB | {} KB | {} KB | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {} | {:.2} KiB/s | {:.2} KiB/s | {} | {} | {} | {} |",
         profile.name,
         profile.whir_log_inv_rate,
         result.prepared.bytecode.size(),
         result.prepared.bytecode.read_only_data().len(),
         result.opened_cells,
         v3_ext::subset_log2_failure_with_replacement(profile, result.opened_cells),
-        kb(v3_ext::commitment_size_bytes(&result.commitment)),
+        kb(commitment_bytes),
         kb(proof_bytes),
-        kb(v3_ext::transcript_size_bytes(&result.transcript)),
+        kb(sample_bytes),
         result.timings.encode_commit.as_secs_f64(),
         result.timings.prover_preprocess.as_secs_f64(),
         result.timings.prove.as_secs_f64(),
@@ -1304,6 +1396,8 @@ fn v3_ext_row(result: &v3_ext::ExtBenchmarkResult) -> String {
         result.timings.proof_verify.as_secs_f64(),
         result.timings.verify_openings.as_secs_f64(),
         reconstruction,
+        leanvm_throughput,
+        full_throughput,
         metadata.map(|m| m.cycles).unwrap_or_default(),
         metadata.map(|m| m.n_poseidons).unwrap_or_default(),
         metadata.map(|m| m.n_extension_ops).unwrap_or_default(),
@@ -1315,6 +1409,42 @@ fn format_duration(value: Option<Duration>) -> String {
     value
         .map(|duration| format!("{:.3}s", duration.as_secs_f64()))
         .unwrap_or_else(|| "n/a".to_string())
+}
+
+fn v3_ext_payload_bytes(profile: v3_ext::ExtProfile) -> usize {
+    profile.n * profile.k * pq_das::EXT_DEGREE * 31 / 8
+}
+
+fn throughput_kib_per_sec(payload_bytes: usize, seconds: f64) -> f64 {
+    if seconds == 0.0 {
+        return f64::INFINITY;
+    }
+    payload_bytes as f64 / 1024.0 / seconds
+}
+
+fn full_das_throughput_kib_per_sec(
+    result: &v3_ext::ExtBenchmarkResult,
+    commitment_bytes: usize,
+    proof_bytes: usize,
+    sample_bytes: usize,
+) -> f64 {
+    const BANDWIDTH_BYTES_PER_SEC: f64 = 50_000_000.0 / 8.0;
+    let upload_bytes = commitment_bytes + proof_bytes;
+    let download_bytes = commitment_bytes + proof_bytes + sample_bytes;
+    let network_time = (upload_bytes + download_bytes) as f64 / BANDWIDTH_BYTES_PER_SEC;
+    let timings = &result.timings;
+    let compute_time = timings.encode_commit.as_secs_f64()
+        + timings.prover_preprocess.as_secs_f64()
+        + timings.prove.as_secs_f64()
+        + timings.opening_generation.as_secs_f64()
+        + timings.verifier_rebuild.as_secs_f64()
+        + timings.proof_verify.as_secs_f64()
+        + timings.verify_openings.as_secs_f64()
+        + timings
+            .reconstruct
+            .map(|duration| duration.as_secs_f64())
+            .unwrap_or_default();
+    throughput_kib_per_sec(v3_ext_payload_bytes(result.profile), compute_time + network_time)
 }
 
 fn kb(bytes: usize) -> String {

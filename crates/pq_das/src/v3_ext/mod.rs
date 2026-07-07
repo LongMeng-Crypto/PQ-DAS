@@ -131,6 +131,70 @@ impl ExtProfile {
         c: 32,
         whir_log_inv_rate: 1,
     };
+    pub const BLOB_EXT_2X_18: Self = Self {
+        name: "blob-ext-2x-18",
+        n: 18,
+        m: 32768,
+        k: 16384,
+        c: 32,
+        whir_log_inv_rate: 1,
+    };
+    pub const BLOB_EXT_2X_20: Self = Self {
+        name: "blob-ext-2x-20",
+        n: 20,
+        m: 32768,
+        k: 16384,
+        c: 32,
+        whir_log_inv_rate: 1,
+    };
+    pub const BLOB_EXT_2X_22: Self = Self {
+        name: "blob-ext-2x-22",
+        n: 22,
+        m: 32768,
+        k: 16384,
+        c: 32,
+        whir_log_inv_rate: 1,
+    };
+    pub const BLOB_EXT_2X_24: Self = Self {
+        name: "blob-ext-2x-24",
+        n: 24,
+        m: 32768,
+        k: 16384,
+        c: 32,
+        whir_log_inv_rate: 1,
+    };
+    pub const BLOB_EXT_2X_26: Self = Self {
+        name: "blob-ext-2x-26",
+        n: 26,
+        m: 32768,
+        k: 16384,
+        c: 32,
+        whir_log_inv_rate: 1,
+    };
+    pub const BLOB_EXT_2X_28: Self = Self {
+        name: "blob-ext-2x-28",
+        n: 28,
+        m: 32768,
+        k: 16384,
+        c: 32,
+        whir_log_inv_rate: 1,
+    };
+    pub const BLOB_EXT_2X_30: Self = Self {
+        name: "blob-ext-2x-30",
+        n: 30,
+        m: 32768,
+        k: 16384,
+        c: 32,
+        whir_log_inv_rate: 1,
+    };
+    pub const BLOB_EXT_2X_32: Self = Self {
+        name: "blob-ext-2x-32",
+        n: 32,
+        m: 32768,
+        k: 16384,
+        c: 32,
+        whir_log_inv_rate: 1,
+    };
     pub const BLOB_EXT_2X_C16_14: Self = Self {
         name: "blob-ext-2x-c16-14",
         n: 14,
@@ -334,6 +398,70 @@ impl ExtProfile {
     pub const BLOB_EXT_4X_C32_16: Self = Self {
         name: "blob-ext-4x-c32-16",
         n: 16,
+        m: 65536,
+        k: 32768,
+        c: 32,
+        whir_log_inv_rate: 1,
+    };
+    pub const BLOB_EXT_4X_C32_18: Self = Self {
+        name: "blob-ext-4x-c32-18",
+        n: 18,
+        m: 65536,
+        k: 32768,
+        c: 32,
+        whir_log_inv_rate: 1,
+    };
+    pub const BLOB_EXT_4X_C32_20: Self = Self {
+        name: "blob-ext-4x-c32-20",
+        n: 20,
+        m: 65536,
+        k: 32768,
+        c: 32,
+        whir_log_inv_rate: 1,
+    };
+    pub const BLOB_EXT_4X_C32_22: Self = Self {
+        name: "blob-ext-4x-c32-22",
+        n: 22,
+        m: 65536,
+        k: 32768,
+        c: 32,
+        whir_log_inv_rate: 1,
+    };
+    pub const BLOB_EXT_4X_C32_24: Self = Self {
+        name: "blob-ext-4x-c32-24",
+        n: 24,
+        m: 65536,
+        k: 32768,
+        c: 32,
+        whir_log_inv_rate: 1,
+    };
+    pub const BLOB_EXT_4X_C32_26: Self = Self {
+        name: "blob-ext-4x-c32-26",
+        n: 26,
+        m: 65536,
+        k: 32768,
+        c: 32,
+        whir_log_inv_rate: 1,
+    };
+    pub const BLOB_EXT_4X_C32_28: Self = Self {
+        name: "blob-ext-4x-c32-28",
+        n: 28,
+        m: 65536,
+        k: 32768,
+        c: 32,
+        whir_log_inv_rate: 1,
+    };
+    pub const BLOB_EXT_4X_C32_30: Self = Self {
+        name: "blob-ext-4x-c32-30",
+        n: 30,
+        m: 65536,
+        k: 32768,
+        c: 32,
+        whir_log_inv_rate: 1,
+    };
+    pub const BLOB_EXT_4X_C32_32: Self = Self {
+        name: "blob-ext-4x-c32-32",
+        n: 32,
         m: 65536,
         k: 32768,
         c: 32,
