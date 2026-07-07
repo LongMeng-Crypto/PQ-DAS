@@ -202,7 +202,7 @@ struct Cli {
 
     #[arg(
         long = "all-v3-ext-benchmarks",
-        help = "Run the 1x and 2x extension-blob profiles under V3-ext"
+        help = "Run the 1x, 2x, and 4x extension-blob profiles under V3-ext"
     )]
     all_v3_ext_benchmarks: bool,
 
@@ -256,13 +256,13 @@ struct Cli {
 
     #[arg(
         long = "v3-ext-4x-row-count-sweep",
-        help = "Run V3-ext 4x, c=32 profiles for n=1,2,4,6,...,32"
+        help = "Run V3-ext 4x, c=32 profiles for n=1,2,4,6,...,16"
     )]
     v3_ext_4x_row_count_sweep: bool,
 
     #[arg(
         long = "all-v3-ext-4x-row-benchmarks",
-        help = "Run V3-ext 4x-c32 profiles for n=1,2,4,6,...,32"
+        help = "Run V3-ext 4x-c32 profiles for n=1,2,4,6,...,16"
     )]
     all_v3_ext_4x_row_benchmarks: bool,
 
@@ -828,9 +828,9 @@ fn run_all_v3_ext_2x_row_benchmarks(skip_reconstruction: bool) -> Result<(), Box
     Ok(())
 }
 
-/// Runs the V3-ext 4x-c32 row-count sweep for n=1,2,4,6,8,10,12,14,16.
-fn run_v3_ext_4x_row_count_sweep(skip_reconstruction: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let profiles = [
+/// Returns the local-safe 4x, c=32 row-count sweep profiles.
+fn v3_ext_4x_c32_row_profiles() -> [v3_ext::ExtProfile; 9] {
+    [
         v3_ext::ExtProfile::BLOB_EXT_4X_C32_1,
         v3_ext::ExtProfile::BLOB_EXT_4X_C32_2,
         v3_ext::ExtProfile::BLOB_EXT_4X_C32_4,
@@ -840,7 +840,12 @@ fn run_v3_ext_4x_row_count_sweep(skip_reconstruction: bool) -> Result<(), Box<dy
         v3_ext::ExtProfile::BLOB_EXT_4X_C32_12,
         v3_ext::ExtProfile::BLOB_EXT_4X_C32_14,
         v3_ext::ExtProfile::BLOB_EXT_4X_C32_16,
-    ];
+    ]
+}
+
+/// Runs the V3-ext 4x-c32 row-count sweep for n=1,2,4,6,8,10,12,14,16.
+fn run_v3_ext_4x_row_count_sweep(skip_reconstruction: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let profiles = v3_ext_4x_c32_row_profiles();
     let mut results = Vec::with_capacity(profiles.len());
     for profile in profiles {
         results.push(run_v3_ext_benchmark(profile, skip_reconstruction)?);
@@ -849,25 +854,9 @@ fn run_v3_ext_4x_row_count_sweep(skip_reconstruction: bool) -> Result<(), Box<dy
     Ok(())
 }
 
-/// Runs the V3-ext 4x-c32 row-count sweep for n=1,2,4,6,8,10,12,14,16.
+/// Compatibility alias for the V3-ext 4x-c32 row-count sweep.
 fn run_all_v3_ext_4x_row_benchmarks(skip_reconstruction: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let profiles = [
-        v3_ext::ExtProfile::BLOB_EXT_4X_C32_1,
-        v3_ext::ExtProfile::BLOB_EXT_4X_C32_2,
-        v3_ext::ExtProfile::BLOB_EXT_4X_C32_4,
-        v3_ext::ExtProfile::BLOB_EXT_4X_C32_6,
-        v3_ext::ExtProfile::BLOB_EXT_4X_C32_8,
-        v3_ext::ExtProfile::BLOB_EXT_4X_C32_10,
-        v3_ext::ExtProfile::BLOB_EXT_4X_C32_12,
-        v3_ext::ExtProfile::BLOB_EXT_4X_C32_14,
-        v3_ext::ExtProfile::BLOB_EXT_4X_C32_16,
-    ];
-    let mut results = Vec::with_capacity(profiles.len());
-    for profile in profiles {
-        results.push(run_v3_ext_benchmark(profile, skip_reconstruction)?);
-    }
-    print_v3_ext_table(&results);
-    Ok(())
+    run_v3_ext_4x_row_count_sweep(skip_reconstruction)
 }
 
 fn run_v2_base_benchmark(
@@ -1429,8 +1418,25 @@ fn full_das_throughput_kib_per_sec(
     sample_bytes: usize,
 ) -> f64 {
     const BANDWIDTH_BYTES_PER_SEC: f64 = 50_000_000.0 / 8.0;
+    let profile = result.profile;
+    let payload_bytes = v3_ext_payload_bytes(profile);
+    let codeword_bytes = profile.n * profile.m * pq_das::EXT_DEGREE * size_of::<u32>();
+    let read_only_bytes = result.prepared.bytecode.read_only_data().len() * size_of::<u32>();
     let upload_bytes = commitment_bytes + proof_bytes;
     let download_bytes = commitment_bytes + proof_bytes + sample_bytes;
+
+    // Matches the V3 demo document's workflow-throughput numerator: every DAS stage contributes the data it processes or transfers.
+    let full_work_bytes = (payload_bytes + codeword_bytes)
+        + read_only_bytes
+        + (codeword_bytes + read_only_bytes)
+        + upload_bytes
+        + sample_bytes
+        + download_bytes
+        + read_only_bytes
+        + (proof_bytes + commitment_bytes)
+        + (sample_bytes + commitment_bytes)
+        + (sample_bytes + payload_bytes);
+
     let network_time = (upload_bytes + download_bytes) as f64 / BANDWIDTH_BYTES_PER_SEC;
     let timings = &result.timings;
     let compute_time = timings.encode_commit.as_secs_f64()
@@ -1444,7 +1450,7 @@ fn full_das_throughput_kib_per_sec(
             .reconstruct
             .map(|duration| duration.as_secs_f64())
             .unwrap_or_default();
-    throughput_kib_per_sec(v3_ext_payload_bytes(result.profile), compute_time + network_time)
+    throughput_kib_per_sec(full_work_bytes, compute_time + network_time)
 }
 
 fn kb(bytes: usize) -> String {
