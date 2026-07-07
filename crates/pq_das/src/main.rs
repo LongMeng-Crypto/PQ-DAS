@@ -1421,22 +1421,10 @@ fn full_das_throughput_kib_per_sec(
     let profile = result.profile;
     let payload_bytes = v3_ext_payload_bytes(profile);
     let codeword_bytes = profile.n * profile.m * pq_das::EXT_DEGREE * size_of::<u32>();
-    let read_only_bytes = result.prepared.bytecode.read_only_data().len() * size_of::<u32>();
-    let upload_bytes = commitment_bytes + proof_bytes;
+    let upload_bytes = codeword_bytes + commitment_bytes + proof_bytes;
     let download_bytes = commitment_bytes + proof_bytes + sample_bytes;
 
-    // Matches the V3 demo document's workflow-throughput numerator: every DAS stage contributes the data it processes or transfers.
-    let full_work_bytes = (payload_bytes + codeword_bytes)
-        + read_only_bytes
-        + (codeword_bytes + read_only_bytes)
-        + upload_bytes
-        + sample_bytes
-        + download_bytes
-        + read_only_bytes
-        + (proof_bytes + commitment_bytes)
-        + (sample_bytes + commitment_bytes)
-        + (sample_bytes + payload_bytes);
-
+    // Benedikt-style DA throughput: useful payload divided by builder-receives-data-to-validator-accepts latency.
     let network_time = (upload_bytes + download_bytes) as f64 / BANDWIDTH_BYTES_PER_SEC;
     let timings = &result.timings;
     let compute_time = timings.encode_commit.as_secs_f64()
@@ -1445,12 +1433,8 @@ fn full_das_throughput_kib_per_sec(
         + timings.opening_generation.as_secs_f64()
         + timings.verifier_rebuild.as_secs_f64()
         + timings.proof_verify.as_secs_f64()
-        + timings.verify_openings.as_secs_f64()
-        + timings
-            .reconstruct
-            .map(|duration| duration.as_secs_f64())
-            .unwrap_or_default();
-    throughput_kib_per_sec(full_work_bytes, compute_time + network_time)
+        + timings.verify_openings.as_secs_f64();
+    throughput_kib_per_sec(payload_bytes, compute_time + network_time)
 }
 
 fn kb(bytes: usize) -> String {
