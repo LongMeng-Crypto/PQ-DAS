@@ -6,6 +6,7 @@ pub mod v2_base;
 pub mod v2_ext;
 pub mod v3_base;
 pub mod v3_ext;
+pub mod v4_ext;
 
 use std::fmt::{Display, Formatter};
 
