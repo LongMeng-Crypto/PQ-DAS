@@ -215,6 +215,12 @@ struct Cli {
     all_v4_ext_benchmarks: bool,
 
     #[arg(
+        long = "v4-ext-row-count-sweep",
+        help = "Run V4-ext 2x, c=32 profiles for n=1,2,4,6,...,32"
+    )]
+    v4_ext_row_count_sweep: bool,
+
+    #[arg(
         long = "v3-ext-blob-size-sweep",
         help = "Run V3-ext n=14, ell=1024 profiles for blob sizes 1x, 2x, and 4x"
     )]
@@ -500,8 +506,24 @@ impl Cli {
 
     fn selected_v4_ext_profile(&self) -> Result<v4_ext::ExtProfile, Box<dyn std::error::Error>> {
         let mut profile = match self.profile {
+            ProfileName::BlobExt2x1 => v4_ext::ExtProfile::BLOB_EXT_2X_1,
+            ProfileName::BlobExt2x2 => v4_ext::ExtProfile::BLOB_EXT_2X_2,
+            ProfileName::BlobExt2x4 => v4_ext::ExtProfile::BLOB_EXT_2X_4,
+            ProfileName::BlobExt2x6 => v4_ext::ExtProfile::BLOB_EXT_2X_6,
+            ProfileName::BlobExt2x8 => v4_ext::ExtProfile::BLOB_EXT_2X_8,
+            ProfileName::BlobExt2x10 => v4_ext::ExtProfile::BLOB_EXT_2X_10,
+            ProfileName::BlobExt2x12 => v4_ext::ExtProfile::BLOB_EXT_2X_12,
             ProfileName::BlobExt2x14 => v4_ext::ExtProfile::BLOB_EXT_2X_14,
-            _ => return Err("v4_ext currently supports --profile blob-ext-2x-14".into()),
+            ProfileName::BlobExt2x16 => v4_ext::ExtProfile::BLOB_EXT_2X_16,
+            ProfileName::BlobExt2x18 => v4_ext::ExtProfile::BLOB_EXT_2X_18,
+            ProfileName::BlobExt2x20 => v4_ext::ExtProfile::BLOB_EXT_2X_20,
+            ProfileName::BlobExt2x22 => v4_ext::ExtProfile::BLOB_EXT_2X_22,
+            ProfileName::BlobExt2x24 => v4_ext::ExtProfile::BLOB_EXT_2X_24,
+            ProfileName::BlobExt2x26 => v4_ext::ExtProfile::BLOB_EXT_2X_26,
+            ProfileName::BlobExt2x28 => v4_ext::ExtProfile::BLOB_EXT_2X_28,
+            ProfileName::BlobExt2x30 => v4_ext::ExtProfile::BLOB_EXT_2X_30,
+            ProfileName::BlobExt2x32 => v4_ext::ExtProfile::BLOB_EXT_2X_32,
+            _ => return Err("v4_ext currently supports 2x extension row-count profiles".into()),
         };
         profile.whir_log_inv_rate = self.whir_log_inv_rate;
         profile.validate()?;
@@ -530,6 +552,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if cli.all_v4_ext_benchmarks {
         run_all_v4_ext_benchmarks(cli.skip_reconstruction)?;
+        return Ok(());
+    }
+    if cli.v4_ext_row_count_sweep {
+        run_v4_ext_row_count_sweep(cli.skip_reconstruction)?;
         return Ok(());
     }
     if cli.v3_ext_blob_size_sweep {
@@ -701,6 +727,35 @@ fn run_v4_ext_single(profile: v4_ext::ExtProfile, skip_reconstruction: bool) -> 
 /// Runs and prints the V4-ext benchmark table.
 fn run_all_v4_ext_benchmarks(skip_reconstruction: bool) -> Result<(), Box<dyn std::error::Error>> {
     let profiles = [v4_ext::ExtProfile::BLOB_EXT_2X_14];
+    let mut results = Vec::with_capacity(profiles.len());
+    for profile in profiles {
+        results.push(run_v4_ext_benchmark(profile, skip_reconstruction)?);
+    }
+    print_v4_ext_table(&results);
+    Ok(())
+}
+
+/// Runs the V4-ext 2x row-count sweep for n=1,2,4,6,...,32.
+fn run_v4_ext_row_count_sweep(skip_reconstruction: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let profiles = [
+        v4_ext::ExtProfile::BLOB_EXT_2X_1,
+        v4_ext::ExtProfile::BLOB_EXT_2X_2,
+        v4_ext::ExtProfile::BLOB_EXT_2X_4,
+        v4_ext::ExtProfile::BLOB_EXT_2X_6,
+        v4_ext::ExtProfile::BLOB_EXT_2X_8,
+        v4_ext::ExtProfile::BLOB_EXT_2X_10,
+        v4_ext::ExtProfile::BLOB_EXT_2X_12,
+        v4_ext::ExtProfile::BLOB_EXT_2X_14,
+        v4_ext::ExtProfile::BLOB_EXT_2X_16,
+        v4_ext::ExtProfile::BLOB_EXT_2X_18,
+        v4_ext::ExtProfile::BLOB_EXT_2X_20,
+        v4_ext::ExtProfile::BLOB_EXT_2X_22,
+        v4_ext::ExtProfile::BLOB_EXT_2X_24,
+        v4_ext::ExtProfile::BLOB_EXT_2X_26,
+        v4_ext::ExtProfile::BLOB_EXT_2X_28,
+        v4_ext::ExtProfile::BLOB_EXT_2X_30,
+        v4_ext::ExtProfile::BLOB_EXT_2X_32,
+    ];
     let mut results = Vec::with_capacity(profiles.len());
     for profile in profiles {
         results.push(run_v4_ext_benchmark(profile, skip_reconstruction)?);
