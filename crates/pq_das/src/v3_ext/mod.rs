@@ -123,6 +123,14 @@ impl ExtProfile {
         c: 32,
         whir_log_inv_rate: 1,
     };
+    pub const BLOB_EXT_2X_15: Self = Self {
+        name: "blob-ext-2x-15",
+        n: 15,
+        m: 32768,
+        k: 16384,
+        c: 32,
+        whir_log_inv_rate: 1,
+    };
     pub const BLOB_EXT_2X_16: Self = Self {
         name: "blob-ext-2x-16",
         n: 16,

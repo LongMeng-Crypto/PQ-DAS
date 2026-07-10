@@ -61,6 +61,8 @@ enum ProfileName {
     BlobExt2x12,
     #[value(name = "blob-ext-2x-14")]
     BlobExt2x14,
+    #[value(name = "blob-ext-2x-15")]
+    BlobExt2x15,
     #[value(name = "blob-ext-2x-16")]
     BlobExt2x16,
     #[value(name = "blob-ext-2x-18")]
@@ -234,7 +236,7 @@ struct Cli {
 
     #[arg(
         long = "v3-ext-row-count-sweep",
-        help = "Run V3-ext 2x, c=32 profiles for n=1,2,4,6,...,32"
+        help = "Run V3-ext 2x, c=32 profiles for n=1,2,4,6,...,14,15,16,...,32"
     )]
     v3_ext_row_count_sweep: bool,
 
@@ -264,7 +266,7 @@ struct Cli {
 
     #[arg(
         long = "all-v3-ext-2x-row-benchmarks",
-        help = "Run V3-ext 2x profiles for n=1,2,4,6,...,32"
+        help = "Run V3-ext 2x profiles for n=1,2,4,6,...,14,15,16,...,32"
     )]
     all_v3_ext_2x_row_benchmarks: bool,
 
@@ -328,6 +330,7 @@ impl Cli {
             | ProfileName::BlobExt2x10
             | ProfileName::BlobExt2x12
             | ProfileName::BlobExt2x14
+            | ProfileName::BlobExt2x15
             | ProfileName::BlobExt2x16
             | ProfileName::BlobExt2x18
             | ProfileName::BlobExt2x20
@@ -403,6 +406,7 @@ impl Cli {
             | ProfileName::BlobExt2x10
             | ProfileName::BlobExt2x12
             | ProfileName::BlobExt2x14
+            | ProfileName::BlobExt2x15
             | ProfileName::BlobExt2x16
             | ProfileName::BlobExt2x18
             | ProfileName::BlobExt2x20
@@ -453,6 +457,7 @@ impl Cli {
             ProfileName::BlobExt2x10 => v3_ext::ExtProfile::BLOB_EXT_2X_10,
             ProfileName::BlobExt2x12 => v3_ext::ExtProfile::BLOB_EXT_2X_12,
             ProfileName::BlobExt2x14 => v3_ext::ExtProfile::BLOB_EXT_2X_14,
+            ProfileName::BlobExt2x15 => v3_ext::ExtProfile::BLOB_EXT_2X_15,
             ProfileName::BlobExt2x16 => v3_ext::ExtProfile::BLOB_EXT_2X_16,
             ProfileName::BlobExt2x18 => v3_ext::ExtProfile::BLOB_EXT_2X_18,
             ProfileName::BlobExt2x20 => v3_ext::ExtProfile::BLOB_EXT_2X_20,
@@ -806,6 +811,7 @@ fn run_v3_ext_row_count_sweep(skip_reconstruction: bool) -> Result<(), Box<dyn s
         v3_ext::ExtProfile::BLOB_EXT_2X_10,
         v3_ext::ExtProfile::BLOB_EXT_2X_12,
         v3_ext::ExtProfile::BLOB_EXT_2X_14,
+        v3_ext::ExtProfile::BLOB_EXT_2X_15,
         v3_ext::ExtProfile::BLOB_EXT_2X_16,
         v3_ext::ExtProfile::BLOB_EXT_2X_18,
         v3_ext::ExtProfile::BLOB_EXT_2X_20,
@@ -908,6 +914,7 @@ fn run_all_v3_ext_2x_row_benchmarks(skip_reconstruction: bool) -> Result<(), Box
         v3_ext::ExtProfile::BLOB_EXT_2X_10,
         v3_ext::ExtProfile::BLOB_EXT_2X_12,
         v3_ext::ExtProfile::BLOB_EXT_2X_14,
+        v3_ext::ExtProfile::BLOB_EXT_2X_15,
         v3_ext::ExtProfile::BLOB_EXT_2X_16,
         v3_ext::ExtProfile::BLOB_EXT_2X_18,
         v3_ext::ExtProfile::BLOB_EXT_2X_20,

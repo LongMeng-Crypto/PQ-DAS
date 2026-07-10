@@ -48,15 +48,13 @@ def zero_digest_ret():
     return zero
 
 
-def hash_contiguous_chunks(data, num_chunks: Const):
+def hash_contiguous_chunks_into(data, num_chunks: Const, dest):
     if num_chunks == 1:
-        out_one = Array(DIGEST_LEN)
-        poseidon16_compress_half(zero_digest_ret(), data, out_one)
-        return out_one
+        poseidon16_compress_half(zero_digest_ret(), data, dest)
+        return
     if num_chunks == 2:
-        out_two = Array(DIGEST_LEN)
-        poseidon16_compress_half(data, data + DIGEST_LEN, out_two)
-        return out_two
+        poseidon16_compress_half(data, data + DIGEST_LEN, dest)
+        return
 
     states = Array((num_chunks - 2) * DIGEST_LEN)
     poseidon16_compress_half(data, data + DIGEST_LEN, states)
@@ -66,16 +64,15 @@ def hash_contiguous_chunks(data, num_chunks: Const):
             data + (chunk + 1) * DIGEST_LEN,
             states + chunk * DIGEST_LEN,
         )
-    out_many = Array(DIGEST_LEN)
     poseidon16_compress_half(
         states + (num_chunks - 3) * DIGEST_LEN,
         data + (num_chunks - 1) * DIGEST_LEN,
-        out_many,
+        dest,
     )
-    return out_many
+    return
 
 
-def hash_cell_10_chunks(cell):
+def hash_cell_10_chunks_into(cell, dest):
     states = Array(8 * DIGEST_LEN)
     poseidon16_compress_half(cell, cell + DIGEST_LEN, states)
     for chunk in unroll(1, 8):
@@ -84,16 +81,15 @@ def hash_cell_10_chunks(cell):
             cell + (chunk + 1) * DIGEST_LEN,
             states + chunk * DIGEST_LEN,
         )
-    out = Array(DIGEST_LEN)
     poseidon16_compress_half(
         states + 7 * DIGEST_LEN,
         cell + 9 * DIGEST_LEN,
-        out,
+        dest,
     )
-    return out
+    return
 
 
-def hash_cell_20_chunks(cell):
+def hash_cell_20_chunks_into(cell, dest):
     states = Array(18 * DIGEST_LEN)
     poseidon16_compress_half(cell, cell + DIGEST_LEN, states)
     for chunk in unroll(1, 18):
@@ -102,16 +98,15 @@ def hash_cell_20_chunks(cell):
             cell + (chunk + 1) * DIGEST_LEN,
             states + chunk * DIGEST_LEN,
         )
-    out = Array(DIGEST_LEN)
     poseidon16_compress_half(
         states + 17 * DIGEST_LEN,
         cell + 19 * DIGEST_LEN,
-        out,
+        dest,
     )
-    return out
+    return
 
 
-def hash_cell_40_chunks(cell):
+def hash_cell_40_chunks_into(cell, dest):
     states = Array(38 * DIGEST_LEN)
     poseidon16_compress_half(cell, cell + DIGEST_LEN, states)
     for chunk in unroll(1, 38):
@@ -120,16 +115,15 @@ def hash_cell_40_chunks(cell):
             cell + (chunk + 1) * DIGEST_LEN,
             states + chunk * DIGEST_LEN,
         )
-    out = Array(DIGEST_LEN)
     poseidon16_compress_half(
         states + 37 * DIGEST_LEN,
         cell + 39 * DIGEST_LEN,
-        out,
+        dest,
     )
-    return out
+    return
 
 
-def hash_cell_80_chunks(cell):
+def hash_cell_80_chunks_into(cell, dest):
     states = Array(78 * DIGEST_LEN)
     poseidon16_compress_half(cell, cell + DIGEST_LEN, states)
     for chunk in unroll(1, 78):
@@ -138,25 +132,29 @@ def hash_cell_80_chunks(cell):
             cell + (chunk + 1) * DIGEST_LEN,
             states + chunk * DIGEST_LEN,
         )
-    out = Array(DIGEST_LEN)
     poseidon16_compress_half(
         states + 77 * DIGEST_LEN,
         cell + 79 * DIGEST_LEN,
-        out,
+        dest,
     )
-    return out
+    return
 
 
-def hash_cell(cell):
+def hash_cell_into(cell, dest):
     if CELL_CHUNKS == 10:
-        return hash_cell_10_chunks(cell)
+        hash_cell_10_chunks_into(cell, dest)
+        return
     if CELL_CHUNKS == 20:
-        return hash_cell_20_chunks(cell)
+        hash_cell_20_chunks_into(cell, dest)
+        return
     if CELL_CHUNKS == 40:
-        return hash_cell_40_chunks(cell)
+        hash_cell_40_chunks_into(cell, dest)
+        return
     if CELL_CHUNKS == 80:
-        return hash_cell_80_chunks(cell)
-    return hash_contiguous_chunks(cell, CELL_CHUNKS)
+        hash_cell_80_chunks_into(cell, dest)
+        return
+    hash_contiguous_chunks_into(cell, CELL_CHUNKS, dest)
+    return
 
 
 def merkle_root_from_digests(leaves, log_num_leaves: Const):
@@ -174,41 +172,6 @@ def merkle_root_from_digests(leaves, log_num_leaves: Const):
     return layer
 
 
-def hash_systematic_cell_digests(cell_digests, row):
-    if SYSTEMATIC_CELLS == 1:
-        out_one = Array(DIGEST_LEN)
-        poseidon16_compress_half(zero_digest_ret(), cell_digests + row * DIGEST_LEN, out_one)
-        return out_one
-    if SYSTEMATIC_CELLS == 2:
-        out_two = Array(DIGEST_LEN)
-        poseidon16_compress_half(
-            cell_digests + row * DIGEST_LEN,
-            cell_digests + (N_PADDED + row) * DIGEST_LEN,
-            out_two,
-        )
-        return out_two
-
-    states = Array((SYSTEMATIC_CELLS - 2) * DIGEST_LEN)
-    poseidon16_compress_half(
-        cell_digests + row * DIGEST_LEN,
-        cell_digests + (N_PADDED + row) * DIGEST_LEN,
-        states,
-    )
-    for cell in range(1, SYSTEMATIC_CELLS - 2):
-        poseidon16_compress_half(
-            states + (cell - 1) * DIGEST_LEN,
-            cell_digests + ((cell + 1) * N_PADDED + row) * DIGEST_LEN,
-            states + cell * DIGEST_LEN,
-        )
-    out_many = Array(DIGEST_LEN)
-    poseidon16_compress_half(
-        states + (SYSTEMATIC_CELLS - 3) * DIGEST_LEN,
-        cell_digests + ((SYSTEMATIC_CELLS - 1) * N_PADDED + row) * DIGEST_LEN,
-        out_many,
-    )
-    return out_many
-
-
 def main():
     codewords = Array(N * M_EXT * DIM)
     hint_witness("codewords", codewords)
@@ -216,17 +179,45 @@ def main():
     check_vector = CHECK_VECTOR_PTR
 
     cell_digests = Array(N_CELLS * N_PADDED * DIGEST_LEN)
+    row_hashes = Array(N_PADDED * DIGEST_LEN)
 
     for row in range(0, N):
         row_base = codewords + row * M_EXT * DIM
-        for cell in range(0, N_CELLS):
-            digest = hash_cell(row_base + cell * CELL_BASE_LEN)
-            copy_digest(digest, cell_digests + (cell * N_PADDED + row) * DIGEST_LEN)
+        first_digest = cell_digests + row * DIGEST_LEN
+        hash_cell_into(row_base, first_digest)
 
-    row_hashes = Array(N_PADDED * DIGEST_LEN)
-    for row in range(0, N):
-        row_digest = hash_systematic_cell_digests(cell_digests, row)
-        copy_digest(row_digest, row_hashes + row * DIGEST_LEN)
+        if SYSTEMATIC_CELLS == 1:
+            poseidon16_compress_half(zero_digest_ret(), first_digest, row_hashes + row * DIGEST_LEN)
+        else:
+            second_digest = cell_digests + (N_PADDED + row) * DIGEST_LEN
+            hash_cell_into(row_base + CELL_BASE_LEN, second_digest)
+
+            if SYSTEMATIC_CELLS == 2:
+                poseidon16_compress_half(first_digest, second_digest, row_hashes + row * DIGEST_LEN)
+            else:
+                row_states = Array((SYSTEMATIC_CELLS - 2) * DIGEST_LEN)
+                poseidon16_compress_half(first_digest, second_digest, row_states)
+                for cell in range(2, SYSTEMATIC_CELLS - 1):
+                    digest = cell_digests + (cell * N_PADDED + row) * DIGEST_LEN
+                    hash_cell_into(row_base + cell * CELL_BASE_LEN, digest)
+                    poseidon16_compress_half(
+                        row_states + (cell - 2) * DIGEST_LEN,
+                        digest,
+                        row_states + (cell - 1) * DIGEST_LEN,
+                    )
+
+                cell = SYSTEMATIC_CELLS - 1
+                digest = cell_digests + (cell * N_PADDED + row) * DIGEST_LEN
+                hash_cell_into(row_base + cell * CELL_BASE_LEN, digest)
+                poseidon16_compress_half(
+                    row_states + (SYSTEMATIC_CELLS - 3) * DIGEST_LEN,
+                    digest,
+                    row_hashes + row * DIGEST_LEN,
+                )
+
+        for cell in range(SYSTEMATIC_CELLS, N_CELLS):
+            digest = cell_digests + (cell * N_PADDED + row) * DIGEST_LEN
+            hash_cell_into(row_base + cell * CELL_BASE_LEN, digest)
     for row in unroll(N, N_PADDED):
         zero_digest(row_hashes + row * DIGEST_LEN)
     root_row = merkle_root_from_digests(row_hashes, LOG_N_PADDED)
