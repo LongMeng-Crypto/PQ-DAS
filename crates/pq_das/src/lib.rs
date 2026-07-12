@@ -7,6 +7,7 @@ pub mod v2_ext;
 pub mod v3_base;
 pub mod v3_ext;
 pub mod v4_ext;
+pub mod v4_precompile;
 
 use std::fmt::{Display, Formatter};
 

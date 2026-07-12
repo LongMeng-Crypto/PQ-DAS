@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use backend::PrimeCharacteristicRing;
 use clap::{Parser, ValueEnum};
 use lean_vm::F;
-use pq_das::{DIGEST_LEN, ParameterProfile, demo_data, v2_base, v2_ext, v3_base, v3_ext, v4_ext};
+use pq_das::{DIGEST_LEN, ParameterProfile, demo_data, v2_base, v2_ext, v3_base, v3_ext, v4_ext, v4_precompile};
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum VersionName {
@@ -17,6 +17,8 @@ enum VersionName {
     V3Ext,
     #[value(name = "v4_ext", alias = "v4-ext")]
     V4Ext,
+    #[value(name = "v4_precompile", alias = "v4-precompile")]
+    V4Precompile,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -215,6 +217,12 @@ struct Cli {
         help = "Run the V4-ext column-root-only benchmark profile"
     )]
     all_v4_ext_benchmarks: bool,
+
+    #[arg(
+        long = "all-v4-precompile-benchmarks",
+        help = "Run the V4-precompile macro-expanded V3-ext benchmark profile"
+    )]
+    all_v4_precompile_benchmarks: bool,
 
     #[arg(
         long = "v4-ext-row-count-sweep",
@@ -509,6 +517,13 @@ impl Cli {
         Ok(profile)
     }
 
+    fn selected_v4_precompile_profile(&self) -> Result<v4_precompile::ExtProfile, Box<dyn std::error::Error>> {
+        match self.profile {
+            ProfileName::BlobExt2x15 => Ok(v4_precompile::ExtProfile::BLOB_EXT_2X_15),
+            _ => Err("v4_precompile currently supports --profile blob-ext-2x-15".into()),
+        }
+    }
+
     fn selected_v4_ext_profile(&self) -> Result<v4_ext::ExtProfile, Box<dyn std::error::Error>> {
         let mut profile = match self.profile {
             ProfileName::BlobExt2x1 => v4_ext::ExtProfile::BLOB_EXT_2X_1,
@@ -557,6 +572,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if cli.all_v4_ext_benchmarks {
         run_all_v4_ext_benchmarks(cli.skip_reconstruction)?;
+        return Ok(());
+    }
+
+    if cli.all_v4_precompile_benchmarks {
+        run_all_v4_precompile_benchmarks(cli.skip_reconstruction)?;
         return Ok(());
     }
     if cli.v4_ext_row_count_sweep {
@@ -614,6 +634,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         VersionName::V3Base => run_v3_base_single(cli.selected_base_profile()?, cli.skip_reconstruction)?,
         VersionName::V3Ext => run_v3_ext_single(cli.selected_v3_ext_profile()?, cli.skip_reconstruction)?,
         VersionName::V4Ext => run_v4_ext_single(cli.selected_v4_ext_profile()?, cli.skip_reconstruction)?,
+        VersionName::V4Precompile => {
+            run_v4_precompile_single(cli.selected_v4_precompile_profile()?, cli.skip_reconstruction)?
+        }
     }
     Ok(())
 }
@@ -723,6 +746,25 @@ fn run_all_v3_ext_benchmarks(skip_reconstruction: bool) -> Result<(), Box<dyn st
 }
 
 /// Runs one V4-ext benchmark and prints the detailed report plus VM counters.
+fn run_v4_precompile_single(
+    profile: v4_precompile::ExtProfile,
+    skip_reconstruction: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let result = run_v4_precompile_benchmark(profile, skip_reconstruction)?;
+    print_v4_precompile_report(&result);
+    Ok(())
+}
+
+fn run_all_v4_precompile_benchmarks(skip_reconstruction: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let profiles = [v4_precompile::ExtProfile::BLOB_EXT_2X_15];
+    let mut results = Vec::new();
+    for profile in profiles {
+        results.push(run_v4_precompile_benchmark(profile, skip_reconstruction)?);
+    }
+    print_v4_precompile_table(&results);
+    Ok(())
+}
+
 fn run_v4_ext_single(profile: v4_ext::ExtProfile, skip_reconstruction: bool) -> Result<(), Box<dyn std::error::Error>> {
     let result = run_v4_ext_benchmark(profile, skip_reconstruction)?;
     print_v4_ext_report(&result);
@@ -1255,6 +1297,79 @@ fn run_v3_ext_benchmark(
     })
 }
 
+fn run_v4_precompile_benchmark(
+    profile: v4_precompile::ExtProfile,
+    skip_reconstruction: bool,
+) -> Result<v4_precompile::ExtBenchmarkResult, Box<dyn std::error::Error>> {
+    let data = v4_precompile::demo_data(profile);
+
+    let started = Instant::now();
+    let (commitment, aux) = v4_precompile::encode_and_commit(profile, &data)?;
+    let encode_commit = started.elapsed();
+
+    let started = Instant::now();
+    let prepared = v4_precompile::prepare_statement(commitment)?;
+    let prover_preprocess = started.elapsed();
+
+    let started = Instant::now();
+    let proof = v4_precompile::prove_codewords(&prepared, &aux.codewords)?;
+    let prove = started.elapsed();
+
+    let opened_cells = v4_precompile::opened_cells(profile).min(profile.n_cells());
+    let started = Instant::now();
+    let indices =
+        v4_precompile::sample_query_indices(&prepared.commitment, &[F::from_u32(42); DIGEST_LEN], opened_cells)?;
+    let transcript = v4_precompile::query(&aux, &indices)?;
+    let opening_generation = started.elapsed();
+
+    let started = Instant::now();
+    let verifier_prepared = v4_precompile::prepare_statement(prepared.commitment.clone())?;
+    let verifier_rebuild = started.elapsed();
+
+    let started = Instant::now();
+    v4_precompile::verify_prepared_execution_proof(&verifier_prepared, &proof)?;
+    let proof_verify = started.elapsed();
+
+    let started = Instant::now();
+    let opening_accepted = v4_precompile::verify_openings(&prepared.commitment, &transcript);
+    let verify_openings = started.elapsed();
+
+    let (reconstruction, reconstruct_time) = if skip_reconstruction {
+        (None, None)
+    } else {
+        let reconstruction_indices = v4_precompile::sample_query_indices(
+            &prepared.commitment,
+            &[F::from_u32(84); DIGEST_LEN],
+            profile.reconstruction_threshold_cells(),
+        )?;
+        let reconstruction_transcript = v4_precompile::query(&aux, &reconstruction_indices)?;
+        let started = Instant::now();
+        let correct = v4_precompile::reconstruct(&prepared.commitment, &[reconstruction_transcript])? == data;
+        (Some(correct), Some(started.elapsed()))
+    };
+
+    Ok(v4_precompile::ExtBenchmarkResult {
+        profile,
+        commitment: prepared.commitment.clone(),
+        prepared,
+        proof,
+        transcript,
+        opened_cells,
+        reconstruction,
+        timings: v4_precompile::ExtBenchmarkTimings {
+            encode_commit,
+            prover_preprocess,
+            prove,
+            opening_generation,
+            verifier_rebuild,
+            proof_verify,
+            verify_openings,
+            reconstruct: reconstruct_time,
+        },
+        accepted: opening_accepted,
+    })
+}
+
 fn run_v4_ext_benchmark(
     profile: v4_ext::ExtProfile,
     skip_reconstruction: bool,
@@ -1416,6 +1531,29 @@ fn print_v3_ext_table(results: &[v3_ext::ExtBenchmarkResult]) {
     );
     for result in results {
         println!("{}", v3_ext_row(result));
+    }
+}
+
+fn print_v4_precompile_report(result: &v4_precompile::ExtBenchmarkResult) {
+    println!("PQ-DAS V4-precompile LeanVM demo");
+    println!("{}", v4_precompile_row(result));
+    if let Some(metadata) = &result.proof.execution.metadata {
+        println!("VM cycles: {}", metadata.cycles);
+        println!("Poseidon16 calls: {}", metadata.n_poseidons);
+        println!("ExtensionOp calls: {}", metadata.n_extension_ops);
+    }
+}
+
+fn print_v4_precompile_table(results: &[v4_precompile::ExtBenchmarkResult]) {
+    println!("PQ-DAS V4-precompile LeanVM benchmark table");
+    println!(
+        r"| Profile | WHIR log inv rate | Bytecode instructions | Read-only elements | Opened cells | $\log_2\nu_{{\mathrm{{rep}}}}$ | Commitment size | Proof size | Sample size | Encode + commit | Prover preprocess | LeanVM prove | Opening generation | Verifier rebuild | LeanVM verify | Verify openings | Reconstruct | VM cycles | Poseidon16 calls | ExtensionOp calls | LeanVM proving throughput | Full DAS throughput | Result |"
+    );
+    println!(
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"
+    );
+    for result in results {
+        println!("{}", v4_precompile_row(result));
     }
 }
 
@@ -1590,6 +1728,50 @@ fn v3_ext_row(result: &v3_ext::ExtBenchmarkResult) -> String {
     )
 }
 
+fn v4_precompile_row(result: &v4_precompile::ExtBenchmarkResult) -> String {
+    let profile = result.profile;
+    let proof_bytes = result.proof.serialized_size_bytes();
+    let commitment_bytes = v4_precompile::commitment_size_bytes(&result.commitment);
+    let sample_bytes = v4_precompile::transcript_size_bytes(&result.transcript);
+    let metadata = result.proof.execution.metadata.as_ref();
+    let reconstruction = match result.reconstruction {
+        Some(true) => format_duration(result.timings.reconstruct),
+        Some(false) => "failed".to_string(),
+        None => "skipped".to_string(),
+    };
+    let ok = result.accepted && result.reconstruction.unwrap_or(true);
+    let leanvm_throughput =
+        throughput_kib_per_sec(v4_precompile_payload_bytes(profile), result.timings.prove.as_secs_f64());
+    let full_throughput =
+        full_das_throughput_v4_precompile_kib_per_sec(result, commitment_bytes, proof_bytes, sample_bytes);
+    format!(
+        "| {} | {} | {} | {} | {} | {:.3} | {} KB | {} KB | {} KB | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {:.3}s | {} | {} | {} | {} | {:.2} KiB/s | {:.2} KiB/s | {} |",
+        profile.name,
+        profile.whir_log_inv_rate,
+        result.prepared.bytecode.size(),
+        result.prepared.bytecode.read_only_data().len(),
+        result.opened_cells,
+        v4_precompile::subset_log2_failure_with_replacement(profile, result.opened_cells),
+        kb(commitment_bytes),
+        kb(proof_bytes),
+        kb(sample_bytes),
+        result.timings.encode_commit.as_secs_f64(),
+        result.timings.prover_preprocess.as_secs_f64(),
+        result.timings.prove.as_secs_f64(),
+        result.timings.opening_generation.as_secs_f64(),
+        result.timings.verifier_rebuild.as_secs_f64(),
+        result.timings.proof_verify.as_secs_f64(),
+        result.timings.verify_openings.as_secs_f64(),
+        reconstruction,
+        metadata.map(|m| m.cycles).unwrap_or_default(),
+        metadata.map(|m| m.n_poseidons).unwrap_or_default(),
+        metadata.map(|m| m.n_extension_ops).unwrap_or_default(),
+        leanvm_throughput,
+        full_throughput,
+        if ok { "accepted" } else { "failed" },
+    )
+}
+
 fn v4_ext_row(result: &v4_ext::ExtBenchmarkResult) -> String {
     let profile = result.profile;
     let proof_bytes = result.proof.serialized_size_bytes();
@@ -1646,6 +1828,10 @@ fn v4_ext_payload_bytes(profile: v4_ext::ExtProfile) -> usize {
     profile.n * profile.k * pq_das::EXT_DEGREE * 31 / 8
 }
 
+fn v4_precompile_payload_bytes(profile: v4_precompile::ExtProfile) -> usize {
+    profile.n * profile.k * pq_das::EXT_DEGREE * 31 / 8
+}
+
 fn throughput_kib_per_sec(payload_bytes: usize, seconds: f64) -> f64 {
     if seconds == 0.0 {
         return f64::INFINITY;
@@ -1662,6 +1848,32 @@ fn full_das_throughput_kib_per_sec(
     const BANDWIDTH_BYTES_PER_SEC: f64 = 50_000_000.0 / 8.0;
     let profile = result.profile;
     let payload_bytes = v3_ext_payload_bytes(profile);
+    let codeword_bytes = profile.n * profile.m * pq_das::EXT_DEGREE * size_of::<u32>();
+    let upload_bytes = codeword_bytes + commitment_bytes + proof_bytes;
+    let download_bytes = commitment_bytes + proof_bytes + sample_bytes;
+
+    // Benedikt-style DA throughput: useful payload divided by builder-receives-data-to-validator-accepts latency.
+    let network_time = (upload_bytes + download_bytes) as f64 / BANDWIDTH_BYTES_PER_SEC;
+    let timings = &result.timings;
+    let compute_time = timings.encode_commit.as_secs_f64()
+        + timings.prover_preprocess.as_secs_f64()
+        + timings.prove.as_secs_f64()
+        + timings.opening_generation.as_secs_f64()
+        + timings.verifier_rebuild.as_secs_f64()
+        + timings.proof_verify.as_secs_f64()
+        + timings.verify_openings.as_secs_f64();
+    throughput_kib_per_sec(payload_bytes, compute_time + network_time)
+}
+
+fn full_das_throughput_v4_precompile_kib_per_sec(
+    result: &v4_precompile::ExtBenchmarkResult,
+    commitment_bytes: usize,
+    proof_bytes: usize,
+    sample_bytes: usize,
+) -> f64 {
+    const BANDWIDTH_BYTES_PER_SEC: f64 = 50_000_000.0 / 8.0;
+    let profile = result.profile;
+    let payload_bytes = v4_precompile_payload_bytes(profile);
     let codeword_bytes = profile.n * profile.m * pq_das::EXT_DEGREE * size_of::<u32>();
     let upload_bytes = codeword_bytes + commitment_bytes + proof_bytes;
     let download_bytes = commitment_bytes + proof_bytes + sample_bytes;
