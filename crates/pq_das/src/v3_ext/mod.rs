@@ -571,13 +571,13 @@ pub struct ExtAuxiliaryData {
 pub struct ExtCellOpening {
     pub index: usize,
     pub cells: Vec<Vec<F>>,
-    pub outer_authentication_path: Vec<Digest>,
-    pub row_root: Digest,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExtTranscript {
+    pub row_root: Digest,
     pub openings: Vec<ExtCellOpening>,
+    pub outer_multiproof: Vec<Digest>,
 }
 
 #[derive(Clone, Debug)]
@@ -1070,6 +1070,67 @@ fn merkle_root_no_layers(leaves: &[Digest]) -> Digest {
     layer[0]
 }
 
+fn outer_merkle_multiproof(layers: &[Vec<Digest>], indices: &[usize]) -> Vec<Digest> {
+    let mut nodes: BTreeSet<usize> = indices.iter().copied().collect();
+    let mut proof = Vec::new();
+    for layer in layers.iter().take(layers.len() - 1) {
+        for &node in &nodes {
+            let sibling = node ^ 1;
+            if !nodes.contains(&sibling) {
+                proof.push(layer[sibling]);
+            }
+        }
+        nodes = nodes.into_iter().map(|node| node / 2).collect();
+    }
+    proof
+}
+
+fn verify_outer_merkle_multiproof(leaf_count: usize, leaves: &[(usize, Digest)], proof: &[Digest]) -> Option<Digest> {
+    if !leaf_count.is_power_of_two() || leaves.is_empty() {
+        return None;
+    }
+    let mut nodes = std::collections::BTreeMap::new();
+    for &(index, digest) in leaves {
+        if index >= leaf_count || nodes.insert(index, digest).is_some() {
+            return None;
+        }
+    }
+    let mut proof_pos = 0usize;
+    let mut width = leaf_count;
+    while width > 1 {
+        let current = std::mem::take(&mut nodes);
+        let mut next = std::collections::BTreeMap::new();
+        for (&node, &digest) in &current {
+            if node % 2 == 1 && current.contains_key(&(node ^ 1)) {
+                continue;
+            }
+            let sibling_node = node ^ 1;
+            let sibling = if let Some(&sibling) = current.get(&sibling_node) {
+                sibling
+            } else {
+                let sibling = *proof.get(proof_pos)?;
+                proof_pos += 1;
+                sibling
+            };
+            let parent = if node.is_multiple_of(2) {
+                poseidon16_compress_pair(&digest, &sibling)
+            } else {
+                poseidon16_compress_pair(&sibling, &digest)
+            };
+            if next.insert(node / 2, parent).is_some() {
+                return None;
+            }
+        }
+        nodes = next;
+        width /= 2;
+    }
+    if proof_pos == proof.len() {
+        nodes.remove(&0)
+    } else {
+        None
+    }
+}
+
 fn row_hash_from_cell_digests(profile: ExtProfile, n_padded: usize, cell_digests: &[Digest], row: usize) -> Digest {
     let mut chunks = (0..profile.reconstruction_threshold_cells()).map(|cell| cell_digests[cell * n_padded + row]);
     compression_chain_from_chunks(&mut chunks)
@@ -1282,69 +1343,62 @@ pub fn verify_prepared_execution_proof(prepared: &ExtPreparedStatement, proof: &
     .map_err(DemoError::Verification)
 }
 
-/// Opens requested extension-field cell columns and attaches outer column-root paths.
+/// Opens requested extension-field cell columns and attaches one shared outer Merkle multiproof.
 pub fn query(aux: &ExtAuxiliaryData, indices: &[usize]) -> Result<ExtTranscript, DemoError> {
     let profile = aux.profile;
     let mut seen = BTreeSet::new();
-    let mut openings = Vec::with_capacity(indices.len());
     for &index in indices {
         if index >= profile.n_cells() || !seen.insert(index) {
             return Err(DemoError::InvalidQuery);
         }
+    }
+    let openings = parallel::par_map_collect(indices.len(), |i| {
+        let index = indices[i];
         let start = index * profile.c;
         let cells = aux
             .codewords
             .iter()
             .map(|row| ext_slice_to_base(&row[start..start + profile.c]))
             .collect();
-        let mut node = index;
-        let mut outer_authentication_path = Vec::with_capacity(profile.merkle_depth());
-        for layer in aux.outer_merkle_layers.iter().take(profile.merkle_depth()) {
-            outer_authentication_path.push(layer[node ^ 1]);
-            node /= 2;
-        }
-        openings.push(ExtCellOpening {
-            index,
-            cells,
-            outer_authentication_path,
-            row_root: aux.row_root,
-        });
-    }
-    Ok(ExtTranscript { openings })
+        ExtCellOpening { index, cells }
+    });
+    let outer_multiproof = outer_merkle_multiproof(&aux.outer_merkle_layers, indices);
+    Ok(ExtTranscript {
+        row_root: aux.row_root,
+        openings,
+        outer_multiproof,
+    })
 }
 
-/// Verifies extension-field opened cells by recomputing the inner column root and outer path.
+/// Verifies extension-field opened cells by recomputing inner column roots and one outer multiproof.
 pub fn verify_openings(commitment: &ExtCommitment, transcript: &ExtTranscript) -> bool {
     let profile = commitment.profile;
     let n_padded = padded_rows(profile);
     let zero = [F::ZERO; DIGEST_LEN];
     let expected_cell_len = profile.c * EXT_DEGREE;
     let mut seen = BTreeSet::new();
-    transcript.openings.iter().all(|opening| {
+    for opening in &transcript.openings {
         if opening.index >= profile.n_cells()
             || !seen.insert(opening.index)
             || opening.cells.len() != profile.n
             || opening.cells.iter().any(|cell| cell.len() != expected_cell_len)
-            || opening.outer_authentication_path.len() != profile.merkle_depth()
         {
             return false;
         }
+    }
+    let column_roots = parallel::par_map_collect(transcript.openings.len(), |i| {
+        let opening = &transcript.openings[i];
         let mut leaves = vec![zero; n_padded];
         for (row, cell) in opening.cells.iter().enumerate() {
             leaves[row] = fixed_compression_hash(cell);
         }
-        let mut digest = merkle_root_no_layers(&leaves);
-        let mut node = opening.index;
-        for sibling in &opening.outer_authentication_path {
-            digest = if node.is_multiple_of(2) {
-                poseidon16_compress_pair(&digest, sibling)
-            } else {
-                poseidon16_compress_pair(sibling, &digest)
-            };
-            node /= 2;
-        }
-        poseidon16_compress_pair(&opening.row_root, &digest) == commitment.root
-    })
+        (opening.index, merkle_root_no_layers(&leaves))
+    });
+    let Some(root_col) = verify_outer_merkle_multiproof(profile.n_cells(), &column_roots, &transcript.outer_multiproof)
+    else {
+        return false;
+    };
+    poseidon16_compress_pair(&transcript.row_root, &root_col) == commitment.root
 }
 
 /// Reconstructs extension-field blobs after verifying enough distinct V3-ext cell columns.
@@ -1371,30 +1425,27 @@ pub fn reconstruct(commitment: &ExtCommitment, transcripts: &[ExtTranscript]) ->
         .collect();
     let decoder = ExtErasureDecoder::new(profile, &symbol_indices).ok_or(DemoError::ReconstructionFailed)?;
 
-    (0..profile.n)
-        .map(|row| {
-            let mut values = Vec::with_capacity(symbol_indices.len());
-            for &index in &indices {
-                let opening = &openings[&index];
-                values.extend(ext_slice_from_base(&opening.cells[row]).ok_or(DemoError::ReconstructionFailed)?);
-            }
-            decoder.reconstruct_blob(&values).ok_or(DemoError::ReconstructionFailed)
-        })
-        .collect()
+    parallel::par_map_collect(profile.n, |row| {
+        let mut values = Vec::with_capacity(symbol_indices.len());
+        for &index in &indices {
+            let opening = &openings[&index];
+            values.extend(ext_slice_from_base(&opening.cells[row]).ok_or(DemoError::ReconstructionFailed)?);
+        }
+        decoder.reconstruct_blob(&values).ok_or(DemoError::ReconstructionFailed)
+    })
+    .into_iter()
+    .collect()
 }
 
-/// Returns the byte size of queried indices, serialized extension cells, and outer paths.
+/// Returns canonical bytes for row root, queried indices, serialized cells, and shared outer multiproof.
 pub fn transcript_size_bytes(transcript: &ExtTranscript) -> usize {
-    transcript
-        .openings
-        .iter()
-        .map(|opening| {
-            size_of::<u32>()
-                + opening.cells.iter().map(Vec::len).sum::<usize>() * size_of::<u32>()
-                + opening.outer_authentication_path.len() * DIGEST_LEN * size_of::<u32>()
-                + DIGEST_LEN * size_of::<u32>()
-        })
-        .sum()
+    DIGEST_LEN * size_of::<u32>()
+        + transcript
+            .openings
+            .iter()
+            .map(|opening| size_of::<u32>() + opening.cells.iter().map(Vec::len).sum::<usize>() * size_of::<u32>())
+            .sum::<usize>()
+        + transcript.outer_multiproof.len() * DIGEST_LEN * size_of::<u32>()
 }
 
 /// Returns the public commitment size in canonical KoalaBear bytes.
