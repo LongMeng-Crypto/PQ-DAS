@@ -1258,7 +1258,7 @@ fn compilation_flags(commitment: &ExtCommitment) -> Result<CompilationFlags, Dem
     commitment.profile.validate()?;
     let profile = commitment.profile;
     let root_ptr = DIGEST_LEN;
-    let check_vector_ptr = (profile.m * EXT_DEGREE).next_power_of_two();
+    let check_vector_ptr = root_ptr + DIGEST_LEN;
     let cell_base_len = profile.c * EXT_DEGREE;
     let mut replacements = std::collections::BTreeMap::new();
     for (name, value) in [
@@ -1289,13 +1289,10 @@ fn leanvm_public_input() -> [F; DIGEST_LEN] {
     [F::ZERO; DIGEST_LEN]
 }
 
-fn read_only_data(commitment: &ExtCommitment) -> Vec<F> {
-    commitment.root.to_vec()
-}
-
-fn fixed_check_vector_data(check_vector: &ExtCheckVector) -> Vec<F> {
-    let mut data = vec![F::ZERO; check_vector.len() * EXT_DEGREE];
-    parallel::par_chunks_mut(&mut data, EXT_DEGREE, |index, slot| {
+fn read_only_data(commitment: &ExtCommitment, check_vector: &ExtCheckVector) -> Vec<F> {
+    let mut data = vec![F::ZERO; DIGEST_LEN + commitment.profile.m * EXT_DEGREE];
+    data[..DIGEST_LEN].copy_from_slice(&commitment.root);
+    parallel::par_chunks_mut(&mut data[DIGEST_LEN..], EXT_DEGREE, |index, slot| {
         slot.copy_from_slice(&check_vector[index]);
     });
     data
@@ -1305,8 +1302,7 @@ fn fixed_check_vector_data(check_vector: &ExtCheckVector) -> Vec<F> {
 pub fn prepare_statement(commitment: ExtCommitment) -> Result<ExtPreparedStatement, DemoError> {
     let check_vector = check_vector(&commitment).ok_or(DemoError::ChallengeOnDomain)?;
     let bytecode = compile_program_with_flags(&guest_source(), compilation_flags(&commitment)?)
-        .with_read_only_data(read_only_data(&commitment))
-        .with_fixed_read_only_data(fixed_check_vector_data(&check_vector));
+        .with_read_only_data(read_only_data(&commitment, &check_vector));
     Ok(ExtPreparedStatement {
         commitment,
         check_vector,

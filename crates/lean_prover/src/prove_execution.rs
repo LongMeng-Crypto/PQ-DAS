@@ -8,17 +8,6 @@ use serde::{Deserialize, Serialize};
 use sub_protocols::*;
 use tracing::info_span;
 
-fn fixed_memory_opening(bytecode: &Bytecode, point: &MultilinearPoint<EF>) -> (usize, EF) {
-    let fixed = bytecode.fixed_read_only_data();
-    debug_assert!(!fixed.is_empty());
-    debug_assert!(fixed.len().is_power_of_two());
-    let log_fixed = log2_strict_usize(fixed.len());
-    debug_assert_eq!(point.len(), log_fixed);
-    let start = bytecode.fixed_read_only_data_start();
-    debug_assert_eq!(start % fixed.len(), 0);
-    (start >> log_fixed, fixed.evaluate(point))
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionProof {
     pub proof: Proof<F>,
@@ -241,21 +230,7 @@ pub fn prove_execution(
     let public_memory_random_point = MultilinearPoint(prover_state.sample_vec(log2_strict_usize(public_memory_len)));
     let public_memory_eval = (&memory[..public_memory_len]).evaluate(&public_memory_random_point);
 
-    let fixed_memory_statement = if bytecode.fixed_read_only_data().is_empty() {
-        None
-    } else {
-        prover_state.duplex();
-        let log_fixed = log2_strict_usize(bytecode.fixed_read_only_data().len());
-        let fixed_memory_random_point = MultilinearPoint(prover_state.sample_vec(log_fixed));
-        let (fixed_selector, fixed_memory_eval) = fixed_memory_opening(bytecode, &fixed_memory_random_point);
-        Some(SparseStatement::new(
-            stacked_pcs_witness.stacked_n_vars,
-            fixed_memory_random_point,
-            vec![SparseValue::new(fixed_selector, fixed_memory_eval)],
-        ))
-    };
-
-    let mut previous_statements = vec![
+    let previous_statements = vec![
         SparseStatement::new(
             stacked_pcs_witness.stacked_n_vars,
             logup_statements.memory_and_acc_point,
@@ -269,18 +244,15 @@ pub fn prove_execution(
             public_memory_random_point,
             vec![SparseValue::new(0, public_memory_eval)],
         ),
+        SparseStatement::new(
+            stacked_pcs_witness.stacked_n_vars,
+            logup_statements.bytecode_and_acc_point,
+            vec![SparseValue::new(
+                (2 * memory.len()) >> bytecode.log_size(),
+                logup_statements.value_bytecode_acc,
+            )],
+        ),
     ];
-    if let Some(statement) = fixed_memory_statement {
-        previous_statements.push(statement);
-    }
-    previous_statements.push(SparseStatement::new(
-        stacked_pcs_witness.stacked_n_vars,
-        logup_statements.bytecode_and_acc_point,
-        vec![SparseValue::new(
-            (2 * memory.len()) >> bytecode.log_size(),
-            logup_statements.value_bytecode_acc,
-        )],
-    ));
 
     let global_statements_base = stacked_pcs_global_statements(
         stacked_pcs_witness.stacked_n_vars,
