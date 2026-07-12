@@ -2,7 +2,7 @@ use std::{collections::BTreeSet, fmt::Display, time::Duration};
 
 use backend::{
     Algebra, ArenaVec, BasedVectorSpace, Field, PrimeCharacteristicRing, PrimeField32, TwoAdicField, arena_vec,
-    poseidon_hash_slice, poseidon16_compress_pair,
+    parallel, poseidon_hash_slice, poseidon16_compress_pair,
 };
 use lean_compiler::{CompilationFlags, ProgramSource, compile_program_with_flags};
 use lean_prover::{default_whir_config, prove_execution::prove_execution, verify_execution::verify_execution};
@@ -915,10 +915,10 @@ pub fn encode_blob(profile: ExtProfile, blob: &[EF]) -> ExtCodeword {
     codeword
 }
 
-/// RS-encodes all extension-field blobs.
+/// RS-encodes all extension-field blobs. Rows are independent, so the host preparation runs them in parallel.
 pub fn encode(profile: ExtProfile, data: &ExtData) -> ExtCodewords {
     assert_eq!(data.len(), profile.n);
-    data.iter().map(|blob| encode_blob(profile, blob)).collect()
+    parallel::par_map_collect(data.len(), |row| encode_blob(profile, &data[row]))
 }
 
 fn physical_to_logical(profile: ExtProfile, index: usize) -> usize {
@@ -936,10 +936,9 @@ fn logical_to_physical_codeword(profile: ExtProfile, row: &[EF]) -> ExtCodeword 
 }
 
 fn physical_codewords(profile: ExtProfile, codewords: ExtCodewords) -> ExtCodewords {
-    codewords
-        .iter()
-        .map(|row| logical_to_physical_codeword(profile, row))
-        .collect()
+    parallel::par_map_collect(codewords.len(), |row| {
+        logical_to_physical_codeword(profile, &codewords[row])
+    })
 }
 
 fn push_ext(out: &mut Vec<F>, value: EF) {
@@ -1002,25 +1001,23 @@ pub fn encode_and_commit(profile: ExtProfile, data: &ExtData) -> Result<(ExtComm
     let n_padded = padded_rows(profile);
     let zero = [F::ZERO; DIGEST_LEN];
     let mut cell_digests = vec![zero; profile.n_cells() * n_padded];
-    for cell in 0..profile.n_cells() {
+    parallel::par_chunks_mut(&mut cell_digests, n_padded, |cell, leaves| {
         let start = cell * profile.c;
         for row in 0..profile.n {
-            cell_digests[cell * n_padded + row] = cell_hash(&codewords[row][start..start + profile.c]);
+            leaves[row] = cell_hash(&codewords[row][start..start + profile.c]);
         }
-    }
-    let row_hashes = (0..profile.n)
-        .map(|row| row_hash_from_cell_digests(profile, n_padded, &cell_digests, row))
-        .collect::<Vec<_>>();
+    });
+    let row_hashes = parallel::par_map_collect(profile.n, |row| {
+        row_hash_from_cell_digests(profile, n_padded, &cell_digests, row)
+    });
     let mut row_leaves = vec![zero; n_padded];
     row_leaves[..profile.n].copy_from_slice(&row_hashes);
     let row_root = merkle_layers(&row_leaves).last().unwrap()[0];
-    let column_roots = (0..profile.n_cells())
-        .map(|cell| {
-            merkle_layers(&cell_digests[cell * n_padded..(cell + 1) * n_padded])
-                .last()
-                .unwrap()[0]
-        })
-        .collect::<Vec<_>>();
+    let column_roots = parallel::par_map_collect(profile.n_cells(), |cell| {
+        merkle_layers(&cell_digests[cell * n_padded..(cell + 1) * n_padded])
+            .last()
+            .unwrap()[0]
+    });
     let outer_merkle_layers = merkle_layers(&column_roots);
     let root_col = outer_merkle_layers.last().unwrap()[0];
     let commitment = ExtCommitment {
