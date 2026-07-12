@@ -13,9 +13,6 @@ N_CELLS = N_CELLS_PLACEHOLDER
 SYSTEMATIC_CELLS = SYSTEMATIC_CELLS_PLACEHOLDER
 CELL_CHUNKS = CELL_CHUNKS_PLACEHOLDER
 OUTER_MERKLE_DEPTH = OUTER_MERKLE_DEPTH_PLACEHOLDER
-OUTER_TREE_DIGESTS = OUTER_TREE_DIGESTS_PLACEHOLDER
-OUTER_LEVEL_SIZES = OUTER_LEVEL_SIZES_PLACEHOLDER
-OUTER_LEVEL_OFFSETS = OUTER_LEVEL_OFFSETS_PLACEHOLDER
 
 PUBLIC_ROOT_PTR = PUBLIC_ROOT_PTR_PLACEHOLDER
 CHECK_VECTOR_PTR = CHECK_VECTOR_PTR_PLACEHOLDER
@@ -172,6 +169,77 @@ def merkle_root_from_digests(leaves, log_num_leaves: Const):
     return layer
 
 
+def merkle_root_16_from_digests_into(leaves, dest):
+    level_8 = Array(8 * DIGEST_LEN)
+    for node in unroll(0, 8):
+        poseidon16_compress_half(
+            leaves + (2 * node) * DIGEST_LEN,
+            leaves + (2 * node + 1) * DIGEST_LEN,
+            level_8 + node * DIGEST_LEN,
+        )
+
+    level_4 = Array(4 * DIGEST_LEN)
+    for node in unroll(0, 4):
+        poseidon16_compress_half(
+            level_8 + (2 * node) * DIGEST_LEN,
+            level_8 + (2 * node + 1) * DIGEST_LEN,
+            level_4 + node * DIGEST_LEN,
+        )
+
+    level_2 = Array(2 * DIGEST_LEN)
+    for node in unroll(0, 2):
+        poseidon16_compress_half(
+            level_4 + (2 * node) * DIGEST_LEN,
+            level_4 + (2 * node + 1) * DIGEST_LEN,
+            level_2 + node * DIGEST_LEN,
+        )
+
+    poseidon16_compress_half(level_2, level_2 + DIGEST_LEN, dest)
+    return
+
+
+def merkle_root_16_column_into(leaves, dest):
+    zero = zero_digest_ret()
+    level_8 = Array(8 * DIGEST_LEN)
+    for node in unroll(0, 8):
+        left_index = 2 * node
+        right_index = left_index + 1
+        if N <= left_index:
+            poseidon16_compress_half(zero, zero, level_8 + node * DIGEST_LEN)
+        else:
+            if N <= right_index:
+                poseidon16_compress_half(
+                    leaves + left_index * DIGEST_LEN,
+                    zero,
+                    level_8 + node * DIGEST_LEN,
+                )
+            else:
+                poseidon16_compress_half(
+                    leaves + left_index * DIGEST_LEN,
+                    leaves + right_index * DIGEST_LEN,
+                    level_8 + node * DIGEST_LEN,
+                )
+
+    level_4 = Array(4 * DIGEST_LEN)
+    for node in unroll(0, 4):
+        poseidon16_compress_half(
+            level_8 + (2 * node) * DIGEST_LEN,
+            level_8 + (2 * node + 1) * DIGEST_LEN,
+            level_4 + node * DIGEST_LEN,
+        )
+
+    level_2 = Array(2 * DIGEST_LEN)
+    for node in unroll(0, 2):
+        poseidon16_compress_half(
+            level_4 + (2 * node) * DIGEST_LEN,
+            level_4 + (2 * node + 1) * DIGEST_LEN,
+            level_2 + node * DIGEST_LEN,
+        )
+
+    poseidon16_compress_half(level_2, level_2 + DIGEST_LEN, dest)
+    return
+
+
 def main():
     codewords = Array(N * M_EXT * DIM)
     hint_witness("codewords", codewords)
@@ -220,16 +288,26 @@ def main():
             hash_cell_into(row_base + cell * CELL_BASE_LEN, digest)
     for row in unroll(N, N_PADDED):
         zero_digest(row_hashes + row * DIGEST_LEN)
-    root_row = merkle_root_from_digests(row_hashes, LOG_N_PADDED)
+    root_row = Array(DIGEST_LEN)
+    if N_PADDED == 16:
+        merkle_root_16_from_digests_into(row_hashes, root_row)
+    else:
+        generic_root_row = merkle_root_from_digests(row_hashes, LOG_N_PADDED)
+        copy_digest(generic_root_row, root_row)
 
-    for cell in range(0, N_CELLS):
-        for row in unroll(N, N_PADDED):
-            zero_digest(cell_digests + (cell * N_PADDED + row) * DIGEST_LEN)
+    if N_PADDED != 16:
+        for cell in range(0, N_CELLS):
+            for row in unroll(N, N_PADDED):
+                zero_digest(cell_digests + (cell * N_PADDED + row) * DIGEST_LEN)
 
     column_roots = Array(N_CELLS * DIGEST_LEN)
     for cell in range(0, N_CELLS):
-        root = merkle_root_from_digests(cell_digests + cell * N_PADDED * DIGEST_LEN, LOG_N_PADDED)
-        copy_digest(root, column_roots + cell * DIGEST_LEN)
+        column_root = column_roots + cell * DIGEST_LEN
+        if N_PADDED == 16:
+            merkle_root_16_column_into(cell_digests + cell * N_PADDED * DIGEST_LEN, column_root)
+        else:
+            root = merkle_root_from_digests(cell_digests + cell * N_PADDED * DIGEST_LEN, LOG_N_PADDED)
+            copy_digest(root, column_root)
 
     root_col = merkle_root_from_digests(column_roots, OUTER_MERKLE_DEPTH)
     root = Array(DIGEST_LEN)

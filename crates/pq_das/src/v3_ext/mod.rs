@@ -1129,36 +1129,11 @@ fn compilation_flags(commitment: &ExtCommitment) -> Result<CompilationFlags, Dem
         ("SYSTEMATIC_CELLS_PLACEHOLDER", profile.reconstruction_threshold_cells()),
         ("CELL_CHUNKS_PLACEHOLDER", cell_base_len / DIGEST_LEN),
         ("OUTER_MERKLE_DEPTH_PLACEHOLDER", profile.merkle_depth()),
-        ("OUTER_TREE_DIGESTS_PLACEHOLDER", 2 * profile.n_cells() - 1),
         ("PUBLIC_ROOT_PTR_PLACEHOLDER", root_ptr),
         ("CHECK_VECTOR_PTR_PLACEHOLDER", check_vector_ptr),
     ] {
         replacements.insert(name.to_string(), value.to_string());
     }
-    let mut sizes = Vec::with_capacity(profile.merkle_depth() + 1);
-    let mut offsets = Vec::with_capacity(profile.merkle_depth() + 1);
-    let mut size = profile.n_cells();
-    let mut offset = 0;
-    loop {
-        sizes.push(size);
-        offsets.push(offset);
-        if size == 1 {
-            break;
-        }
-        offset += size;
-        size /= 2;
-    }
-    replacements.insert(
-        "OUTER_LEVEL_SIZES_PLACEHOLDER".to_string(),
-        format!("[{}]", sizes.iter().map(usize::to_string).collect::<Vec<_>>().join(",")),
-    );
-    replacements.insert(
-        "OUTER_LEVEL_OFFSETS_PLACEHOLDER".to_string(),
-        format!(
-            "[{}]",
-            offsets.iter().map(usize::to_string).collect::<Vec<_>>().join(",")
-        ),
-    );
     Ok(CompilationFlags { replacements })
 }
 
