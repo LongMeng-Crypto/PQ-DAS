@@ -11,10 +11,8 @@ pub const COL_PQ_MEM_CODEWORD_BASE: usize = 3;
 pub const COL_PQ_MEM_CHECK_VECTOR_PTR: usize = 4;
 pub const COL_PQ_MEM_RESULT_BASE: usize = 5;
 pub const COL_PQ_MEM_IDX_A: usize = 6;
-pub const COL_PQ_MEM_IDX_B: usize = 7;
-pub const COL_PQ_MEM_IDX_RES: usize = 8;
-pub const COL_PQ_MEM_EXT_DOMAINSEP: usize = 9;
-pub const COL_PQ_MEM_ZERO_RESULT_START: usize = 10;
+pub const COL_PQ_MEM_IDX_RES: usize = 7;
+pub const COL_PQ_MEM_ZERO_RESULT_START: usize = 8;
 pub const NUM_COLS_TOTAL_PQ_DAS_MEMBERSHIP_BATCH: usize = COL_PQ_MEM_ZERO_RESULT_START + crate::DIMENSION;
 
 impl<const BUS: bool> Air for PqDasMembershipBatchPrecompile<BUS> {
@@ -29,27 +27,15 @@ impl<const BUS: bool> Air for PqDasMembershipBatchPrecompile<BUS> {
     }
 
     fn n_constraints(&self) -> usize {
-        21
+        19
     }
 
     fn n_shift_columns(&self) -> usize {
-        COL_PQ_MEM_EXT_DOMAINSEP + 1
+        COL_PQ_MEM_RESULT_BASE + 1
     }
 
     fn eval<AB: AirBuilder>(&self, builder: &mut AB, extra_data: &Self::ExtraData) {
-        let (
-            active,
-            exec_mult,
-            row,
-            codeword_base,
-            check_ptr,
-            result_base,
-            idx_a,
-            idx_b,
-            idx_res,
-            ext_domainsep,
-            zero_result,
-        ) = {
+        let (active, exec_mult, row, codeword_base, check_ptr, result_base, idx_a, idx_res, zero_result) = {
             let flat = builder.flat();
             (
                 flat[COL_PQ_MEM_ACTIVE],
@@ -59,9 +45,7 @@ impl<const BUS: bool> Air for PqDasMembershipBatchPrecompile<BUS> {
                 flat[COL_PQ_MEM_CHECK_VECTOR_PTR],
                 flat[COL_PQ_MEM_RESULT_BASE],
                 flat[COL_PQ_MEM_IDX_A],
-                flat[COL_PQ_MEM_IDX_B],
                 flat[COL_PQ_MEM_IDX_RES],
-                flat[COL_PQ_MEM_EXT_DOMAINSEP],
                 std::array::from_fn::<_, { crate::DIMENSION }, _>(|k| flat[COL_PQ_MEM_ZERO_RESULT_START + k]),
             )
         };
@@ -84,18 +68,16 @@ impl<const BUS: bool> Air for PqDasMembershipBatchPrecompile<BUS> {
                 AB::IF::from_usize(crate::PQ_DAS_MEMBERSHIP_DOMAINSEP),
                 &[codeword_base, check_ptr, result_base],
             );
-            eval_bus_virtual::<AB, EF>(builder, extra_data, active, ext_domainsep, &[idx_a, idx_b, idx_res]);
+            eval_bus_virtual::<AB, EF>(
+                builder,
+                extra_data,
+                active,
+                AB::IF::from_usize(extension_dot_product_domainsep(PQ_DAS_MEMBERSHIP_BASELINE_ROW_LEN)),
+                &[idx_a, check_ptr, idx_res],
+            );
         } else {
             builder.declare_values(&[active, exec_mult]);
-            builder.declare_values(&[
-                codeword_base,
-                check_ptr,
-                result_base,
-                ext_domainsep,
-                idx_a,
-                idx_b,
-                idx_res,
-            ]);
+            builder.declare_values(&[codeword_base, check_ptr, result_base, idx_a, idx_res]);
         }
 
         builder.assert_bool(active);
@@ -103,13 +85,9 @@ impl<const BUS: bool> Air for PqDasMembershipBatchPrecompile<BUS> {
         builder.assert_zero(exec_mult * row);
         builder.assert_zero((AB::IF::ONE - active) * exec_mult);
 
-        let expected_domainsep =
-            AB::IF::from_usize(extension_dot_product_domainsep(PQ_DAS_MEMBERSHIP_BASELINE_ROW_LEN));
-        builder.assert_zero(active * (ext_domainsep - expected_domainsep));
         builder.assert_zero(
             active * (idx_a - codeword_base - row * AB::F::from_usize(PQ_DAS_MEMBERSHIP_CODEWORD_ROW_STRIDE)),
         );
-        builder.assert_zero(active * (idx_b - check_ptr));
         builder.assert_zero(active * (idx_res - result_base - row * AB::F::from_usize(crate::DIMENSION)));
 
         for value in zero_result {

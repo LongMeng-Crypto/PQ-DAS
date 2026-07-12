@@ -46,10 +46,10 @@ impl<const BUS: bool> TableT for PqDasMembershipBatchPrecompile<BUS> {
             BusInteraction {
                 direction: BusDirection::Push,
                 multiplicity: BusMultiplicity::Column(COL_PQ_MEM_ACTIVE),
-                domainsep: BusData::Column(COL_PQ_MEM_EXT_DOMAINSEP),
+                domainsep: BusData::Constant(extension_dot_product_domainsep(PQ_DAS_MEMBERSHIP_BASELINE_ROW_LEN)),
                 data: vec![
                     BusData::Column(COL_PQ_MEM_IDX_A),
-                    BusData::Column(COL_PQ_MEM_IDX_B),
+                    BusData::Column(COL_PQ_MEM_CHECK_VECTOR_PTR),
                     BusData::Column(COL_PQ_MEM_IDX_RES),
                 ],
             },
@@ -66,11 +66,8 @@ impl<const BUS: bool> TableT for PqDasMembershipBatchPrecompile<BUS> {
     fn padding_row(&self, zero_vec_ptr: usize, _null_hash_ptr: usize, _ending_pc: usize) -> Vec<F> {
         let mut row = vec![F::ZERO; NUM_COLS_TOTAL_PQ_DAS_MEMBERSHIP_BATCH];
         row[COL_PQ_MEM_CHECK_VECTOR_PTR] = F::from_usize(zero_vec_ptr);
-        row[COL_PQ_MEM_IDX_B] = F::from_usize(zero_vec_ptr);
         row[COL_PQ_MEM_RESULT_BASE] = F::from_usize(zero_vec_ptr);
         row[COL_PQ_MEM_IDX_RES] = F::from_usize(zero_vec_ptr);
-        row[COL_PQ_MEM_EXT_DOMAINSEP] =
-            F::from_usize(extension_dot_product_domainsep(PQ_DAS_MEMBERSHIP_BASELINE_ROW_LEN));
         row
     }
 
@@ -94,8 +91,6 @@ impl<const BUS: bool> TableT for PqDasMembershipBatchPrecompile<BUS> {
             op: ExtensionOp::DotProduct,
             flag_be: false,
         };
-        let ext_domainsep = F::from_usize(extension_dot_product_domainsep(row_len));
-
         for row in 0..rows {
             let idx_a = codeword_base + F::from_usize(row * row_len * DIMENSION);
             let idx_b = check_vector_ptr;
@@ -123,9 +118,7 @@ impl<const BUS: bool> TableT for PqDasMembershipBatchPrecompile<BUS> {
             trace.columns[COL_PQ_MEM_CHECK_VECTOR_PTR].push(check_vector_ptr);
             trace.columns[COL_PQ_MEM_RESULT_BASE].push(result_base);
             trace.columns[COL_PQ_MEM_IDX_A].push(idx_a);
-            trace.columns[COL_PQ_MEM_IDX_B].push(idx_b);
             trace.columns[COL_PQ_MEM_IDX_RES].push(idx_res);
-            trace.columns[COL_PQ_MEM_EXT_DOMAINSEP].push(ext_domainsep);
             for k in 0..DIMENSION {
                 trace.columns[COL_PQ_MEM_ZERO_RESULT_START + k].push(F::ZERO);
             }

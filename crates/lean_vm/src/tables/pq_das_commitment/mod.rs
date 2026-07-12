@@ -79,7 +79,7 @@ impl<const BUS: bool> TableT for PqDasCommitmentPrecompile<BUS> {
             BusInteraction {
                 direction: BusDirection::Push,
                 multiplicity: BusMultiplicity::Column(COL_PQ_COM_ACTIVE),
-                domainsep: BusData::Column(COL_PQ_COM_POSEIDON_DOMAINSEP),
+                domainsep: BusData::Constant(poseidon_compress_half_domainsep()),
                 data: vec![
                     BusData::Column(COL_PQ_COM_IDX_A),
                     BusData::Column(COL_PQ_COM_IDX_B),
@@ -96,7 +96,6 @@ impl<const BUS: bool> TableT for PqDasCommitmentPrecompile<BUS> {
         row[COL_PQ_COM_IDX_A] = F::from_usize(zero_vec_ptr);
         row[COL_PQ_COM_IDX_B] = F::from_usize(zero_vec_ptr);
         row[COL_PQ_COM_IDX_RES] = F::from_usize(zero_vec_ptr);
-        row[COL_PQ_COM_POSEIDON_DOMAINSEP] = F::from_usize(poseidon_compress_half_domainsep());
         row
     }
 
@@ -214,7 +213,6 @@ impl CommitmentRelay {
         trace.columns[COL_PQ_COM_IDX_A].push(F::from_usize(a));
         trace.columns[COL_PQ_COM_IDX_B].push(F::from_usize(b));
         trace.columns[COL_PQ_COM_IDX_RES].push(F::from_usize(c));
-        trace.columns[COL_PQ_COM_POSEIDON_DOMAINSEP].push(F::from_usize(poseidon_compress_half_domainsep()));
         self.step += 1;
         Ok(())
     }

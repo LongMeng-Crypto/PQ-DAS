@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use crate::*;
-use backend::ArenaVec;
 use backend::ansi::Colorize;
+use backend::{ArenaVec, parallel};
 use lean_vm::*;
 use serde::{Deserialize, Serialize};
 use sub_protocols::*;
@@ -79,23 +79,34 @@ pub fn prove_execution(
     table_log = table_log.trim_end_matches(" | ").to_string();
     tracing::info!("Trace tables sizes: {}", table_log.magenta());
 
-    // TODO parrallelize
     let mut memory_acc = unsafe { ArenaVec::<F>::zeroed(memory.len()) };
     info_span!("Building memory access count").in_scope(|| -> Result<(), ProverError> {
-        for (table, trace) in &traces {
+        let partials = parallel::par_map_collect(ALL_TABLES.len(), |table_index| {
+            let table = ALL_TABLES[table_index];
+            let trace = &traces[&table];
+            let mut local = unsafe { ArenaVec::<F>::zeroed(memory.len()) };
             let buses = table.bus_interactions();
             for group in memory_lookup_groups(&buses) {
                 let idx_col = &trace.columns[group.idx_col];
                 let n = group.value_cols.len();
                 for idx in idx_col {
                     let base = idx.to_usize();
-                    let cells = memory_acc.get_mut(base..base + n).ok_or(RunnerError::OutOfMemory)?;
+                    let cells = local.get_mut(base..base + n).ok_or(RunnerError::OutOfMemory)?;
                     for cell in cells {
                         *cell += F::ONE;
                     }
                 }
             }
-        }
+            Ok::<_, RunnerError>(local)
+        });
+        let partials = partials.into_iter().collect::<Result<Vec<_>, _>>()?;
+        parallel::par_for_each_mut(&mut memory_acc, |i, slot| {
+            let mut sum = F::ZERO;
+            for partial in &partials {
+                sum += partial[i];
+            }
+            *slot = sum;
+        });
         Ok(())
     })?;
 
