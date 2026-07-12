@@ -175,18 +175,19 @@ pub fn prove_execution(
     for (idx, table) in ALL_TABLES.iter().enumerate() {
         let log_n_rows = tables_log_heights[table];
         let n_constraints = table.n_constraints();
-        let bus_numerator_value = logup_statements.bus_numerators_values[table];
-        let bus_denominator_value = logup_statements.bus_denominators_values[table];
-        let signed_numerator = bus_numerator_value
-            * match table.bus_interactions()[0].direction {
-                BusDirection::Pull => EF::NEG_ONE,
-                BusDirection::Push => EF::ONE,
-            };
-        // Each table consumes a disjoint range of alpha powers; alpha^offset weights the bus
-        // numerator (multiplicity), alpha^{offset+1} weights the bus fingerprint, alpha^{offset+2..}
-        // weight the remaining AIR constraints.
-        let bus_final_value = air_alpha_powers[alpha_offset] * signed_numerator
-            + air_alpha_powers[alpha_offset + 1] * (logup_c - bus_denominator_value);
+        let mut bus_final_value = EF::ZERO;
+        let mut column_bus_index = 0usize;
+        for bus in table.bus_interactions() {
+            if let BusMultiplicity::Column(_) = bus.multiplicity {
+                let bus_numerator_value = logup_statements.bus_numerators_values[&(*table, column_bus_index)];
+                let bus_denominator_value = logup_statements.bus_denominators_values[&(*table, column_bus_index)];
+                let signed_numerator = bus_numerator_value * bus.direction.to_field_flag();
+                let bus_alpha_offset = alpha_offset + 2 * column_bus_index;
+                bus_final_value += air_alpha_powers[bus_alpha_offset] * signed_numerator
+                    + air_alpha_powers[bus_alpha_offset + 1] * (logup_c - bus_denominator_value);
+                column_bus_index += 1;
+            }
+        }
 
         let eq_suffix = from_end(gkr_point, log_n_rows).to_vec();
 

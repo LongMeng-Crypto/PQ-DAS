@@ -240,7 +240,7 @@ def merkle_root_16_column_into(leaves, dest):
     return
 
 
-# V4-precompile prototype: row-level compile-time macro expansion over existing
+# V4-precompile prototype: row-level compile-time macro expansion plus a real membership-batch table over existing
 # LeanVM Poseidon16 and ExtensionOp precompiles. The current zkDSL compiler
 # overflows its stack on full 1024-cell unrolling, so large cell loops remain
 # runtime loops while row and membership loops are expanded.
@@ -319,8 +319,6 @@ def main():
     for i in unroll(0, DIGEST_LEN):
         assert root[i] == public_root[i]
 
-    for row in unroll(0, N):
-        result = Array(DIM)
-        dot_product_ee(codewords + row * M_EXT * DIM, check_vector, result, M_EXT)
-        assert_ext_zero(result)
+    membership_results = Array(N * DIM)
+    pq_das_membership_batch(codewords, check_vector, membership_results, N, M_EXT)
     return

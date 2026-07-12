@@ -3,8 +3,13 @@ use backend::*;
 use crate::execution::memory::MemoryAccess;
 use crate::*;
 
-pub const N_TABLES: usize = 3;
-pub const ALL_TABLES: [Table; N_TABLES] = [Table::execution(), Table::extension_op(), Table::poseidon16()];
+pub const N_TABLES: usize = 4;
+pub const ALL_TABLES: [Table; N_TABLES] = [
+    Table::execution(),
+    Table::extension_op(),
+    Table::poseidon16(),
+    Table::pq_das_membership_batch(),
+];
 pub const MAX_BUS_WIDTH: usize = N_INSTRUCTION_COLUMNS + 2; // + 1 for PC, + 1 for domainsep
 pub const LOG_MAX_BUS_WIDTH: usize = log2_ceil_usize(MAX_BUS_WIDTH);
 
@@ -14,6 +19,7 @@ pub enum Table {
     Execution(ExecutionTable<true>),
     ExtensionOp(ExtensionOpPrecompile<true>),
     Poseidon16(Poseidon16Precompile<true>),
+    PqDasMembershipBatch(PqDasMembershipBatchPrecompile<true>),
 }
 
 #[macro_export]
@@ -24,6 +30,7 @@ macro_rules! delegate_to_inner {
             Self::ExtensionOp(p) => p.$method($($($arg),*)?),
             Self::Poseidon16(p) => p.$method($($($arg),*)?),
             Self::Execution(p) => p.$method($($($arg),*)?),
+            Self::PqDasMembershipBatch(p) => p.$method($($($arg),*)?),
         }
     };
     // New pattern for applying a macro to the inner value
@@ -32,6 +39,7 @@ macro_rules! delegate_to_inner {
             Table::ExtensionOp(p) => $macro_name!(p),
             Table::Poseidon16(p) => $macro_name!(p),
             Table::Execution(p) => $macro_name!(p),
+            Table::PqDasMembershipBatch(p) => $macro_name!(p),
         }
     };
 }
@@ -45,6 +53,9 @@ impl Table {
     }
     pub const fn poseidon16() -> Self {
         Self::Poseidon16(Poseidon16Precompile)
+    }
+    pub const fn pq_das_membership_batch() -> Self {
+        Self::PqDasMembershipBatch(PqDasMembershipBatchPrecompile)
     }
     pub fn embed<PF: PrimeCharacteristicRing>(&self) -> PF {
         PF::from_usize(self.index())

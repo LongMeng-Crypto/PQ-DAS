@@ -4,7 +4,7 @@ use lean_vm::{
     ALL_POSEIDON16_NAMES, Boolean, BooleanExpr, CustomHint, ExtensionOpMode, FunctionName,
     POSEIDON16_COMPRESS_HALF_NAME, POSEIDON16_HARDCODED_LEFT_NAME, POSEIDON16_PERMUTE_HALF_HARDCODED_LEFT_NAME,
     POSEIDON16_PERMUTE_HALF_NAME, POSEIDON16_PERMUTE_NAME, POSEIDON16_QUARTER_HARDCODED_LEFT_NAME,
-    POSEIDON16_QUARTER_NAME, PrecompileArgs, PrecompileCompTimeArgs, SourceLocation,
+    POSEIDON16_QUARTER_NAME, PQ_DAS_MEMBERSHIP_BATCH_NAME, PrecompileArgs, PrecompileCompTimeArgs, SourceLocation,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -1679,6 +1679,41 @@ fn simplify_lines(
                                 arg_1: simplified_args[1].clone(),
                                 res: simplified_args[2].clone(),
                                 data: PrecompileCompTimeArgs::ExtensionOp { size, mode },
+                            }));
+                            continue;
+                        }
+
+                        // Special handling for PQ-DAS membership-batch macro precompile.
+                        // Signature: pq_das_membership_batch(codewords, check_vector, results, rows, row_len)
+                        if function_name == PQ_DAS_MEMBERSHIP_BATCH_NAME {
+                            if !targets.is_empty() {
+                                return Err(format!(
+                                    "Precompile {function_name} should not return values, at {location}"
+                                ));
+                            }
+                            if args.len() != 5 {
+                                return Err(format!(
+                                    "Precompile {function_name} expects 5 arguments (codewords, check_vector, results, rows, row_len), got {}, at {location}",
+                                    args.len()
+                                ));
+                            }
+                            let simplified_args = args
+                                .iter()
+                                .map(|arg| simplify_expr(ctx, state, const_malloc, arg, &mut res))
+                                .collect::<Result<Vec<_>, _>>()?;
+                            let rows = simplified_args[3].as_constant().ok_or_else(|| {
+                                format!("{function_name}: rows argument must be a compile-time constant, at {location}")
+                            })?;
+                            let row_len = simplified_args[4].as_constant().ok_or_else(|| {
+                                format!(
+                                    "{function_name}: row_len argument must be a compile-time constant, at {location}"
+                                )
+                            })?;
+                            res.push(SimpleLine::Precompile(PrecompileArgs {
+                                arg_0: simplified_args[0].clone(),
+                                arg_1: simplified_args[1].clone(),
+                                res: simplified_args[2].clone(),
+                                data: PrecompileCompTimeArgs::PqDasMembershipBatch { rows, row_len },
                             }));
                             continue;
                         }

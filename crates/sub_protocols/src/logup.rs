@@ -13,8 +13,8 @@ pub struct GenericLogupStatements {
     pub value_memory_acc: EF,
     pub bytecode_and_acc_point: MultilinearPoint<EF>,
     pub value_bytecode_acc: EF,
-    pub bus_numerators_values: BTreeMap<Table, EF>,
-    pub bus_denominators_values: BTreeMap<Table, EF>,
+    pub bus_numerators_values: BTreeMap<(Table, usize), EF>,
+    pub bus_denominators_values: BTreeMap<(Table, usize), EF>,
     pub gkr_point: Vec<EF>,
     pub columns_values: BTreeMap<Table, BTreeMap<ColIndex, EF>>,
     // Used in recursion
@@ -275,6 +275,7 @@ pub fn prove_generic_logup(
             }
         };
 
+        let mut column_bus_index = 0usize;
         for bus in table.bus_interactions() {
             match bus.multiplicity {
                 BusMultiplicity::Column(mult_col) => {
@@ -284,8 +285,9 @@ pub fn prove_generic_logup(
                     let data_evals: Vec<EF> = bus.data.iter().map(|e| resolve_ef(*e)).collect();
                     let eval_on_data = c - finger_print(resolve_ef(bus.domainsep), &data_evals, alphas_eq_poly);
                     prover_state.add_extension_scalar(eval_on_data);
-                    bus_numerators_values.insert(table, eval_on_multiplicity);
-                    bus_denominators_values.insert(table, eval_on_data);
+                    bus_numerators_values.insert((table, column_bus_index), eval_on_multiplicity);
+                    bus_denominators_values.insert((table, column_bus_index), eval_on_data);
+                    column_bus_index += 1;
                 }
                 BusMultiplicity::One => {
                     // Skip columns already in table_values: memory-lookup groups share
@@ -421,6 +423,7 @@ pub fn verify_generic_logup(
         let mut offset_within_table = layout_offsets[&table];
         let mut table_values = BTreeMap::<ColIndex, EF>::new();
 
+        let mut column_bus_index = 0usize;
         for bus in table.bus_interactions() {
             let pref = pref_at(offset_within_table, log_n_rows);
             match bus.multiplicity {
@@ -429,8 +432,9 @@ pub fn verify_generic_logup(
                     let eval_on_data = verifier_state.next_extension_scalar()?;
                     retrieved_numerators_value += pref * eval_on_multiplicity;
                     retrieved_denominators_value += pref * eval_on_data;
-                    bus_numerators_values.insert(table, eval_on_multiplicity);
-                    bus_denominators_values.insert(table, eval_on_data);
+                    bus_numerators_values.insert((table, column_bus_index), eval_on_multiplicity);
+                    bus_denominators_values.insert((table, column_bus_index), eval_on_data);
+                    column_bus_index += 1;
                 }
                 BusMultiplicity::One => {
                     let n_col_entries = bus

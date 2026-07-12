@@ -424,11 +424,16 @@ fn eval_constant_value(constant: &ConstantValue, compiler: &Compiler) -> usize {
 }
 
 fn validate_instruction(instruction: &Instruction) -> Result<(), String> {
-    if let Instruction::Precompile(p) = instruction
-        && let PrecompileCompTimeArgs::ExtensionOp { size, .. } = &p.data
-        && *size == 0
-    {
-        return Err("extension_op precompile size must be >= 1, got 0".to_string());
+    if let Instruction::Precompile(p) = instruction {
+        match &p.data {
+            PrecompileCompTimeArgs::ExtensionOp { size, .. } if *size == 0 => {
+                return Err("extension_op precompile size must be >= 1, got 0".to_string());
+            }
+            PrecompileCompTimeArgs::PqDasMembershipBatch { rows, row_len } if *rows == 0 || *row_len == 0 => {
+                return Err("pq_das_membership_batch rows and row_len must be >= 1".to_string());
+            }
+            _ => {}
+        }
     }
     Ok(())
 }

@@ -1,6 +1,9 @@
 mod extension_op;
 pub use extension_op::*;
 
+mod pq_das_membership;
+pub use pq_das_membership::*;
+
 mod poseidon;
 pub use poseidon::*;
 
