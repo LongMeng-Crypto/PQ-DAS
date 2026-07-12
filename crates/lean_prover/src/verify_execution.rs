@@ -12,6 +12,17 @@ pub struct ProofVerificationDetails {
 }
 
 /// `bytecode` is trusted to be well-formed here (valid hash, valid instructions, etc)
+fn fixed_memory_opening(bytecode: &Bytecode, point: &MultilinearPoint<EF>) -> (usize, EF) {
+    let fixed = bytecode.fixed_read_only_data();
+    debug_assert!(!fixed.is_empty());
+    debug_assert!(fixed.len().is_power_of_two());
+    let log_fixed = log2_strict_usize(fixed.len());
+    debug_assert_eq!(point.len(), log_fixed);
+    let start = bytecode.fixed_read_only_data_start();
+    debug_assert_eq!(start % fixed.len(), 0);
+    (start >> log_fixed, fixed.evaluate(point))
+}
+
 pub fn verify_execution(
     bytecode: &Bytecode,
     public_input: &[F; PUBLIC_INPUT_LEN],
@@ -178,7 +189,21 @@ pub fn verify_execution(
         MultilinearPoint(verifier_state.sample_vec(log2_strict_usize(public_memory.len())));
     let public_memory_eval = public_memory.evaluate(&public_memory_random_point);
 
-    let previous_statements = vec![
+    let fixed_memory_statement = if bytecode.fixed_read_only_data().is_empty() {
+        None
+    } else {
+        verifier_state.duplex();
+        let log_fixed = log2_strict_usize(bytecode.fixed_read_only_data().len());
+        let fixed_memory_random_point = MultilinearPoint(verifier_state.sample_vec(log_fixed));
+        let (fixed_selector, fixed_memory_eval) = fixed_memory_opening(bytecode, &fixed_memory_random_point);
+        Some(SparseStatement::new(
+            parsed_commitment.num_variables,
+            fixed_memory_random_point,
+            vec![SparseValue::new(fixed_selector, fixed_memory_eval)],
+        ))
+    };
+
+    let mut previous_statements = vec![
         SparseStatement::new(
             parsed_commitment.num_variables,
             logup_statements.memory_and_acc_point,
@@ -192,15 +217,18 @@ pub fn verify_execution(
             public_memory_random_point,
             vec![SparseValue::new(0, public_memory_eval)],
         ),
-        SparseStatement::new(
-            parsed_commitment.num_variables,
-            logup_statements.bytecode_and_acc_point,
-            vec![SparseValue::new(
-                (2 << log_memory) >> bytecode.log_size(),
-                logup_statements.value_bytecode_acc,
-            )],
-        ),
     ];
+    if let Some(statement) = fixed_memory_statement {
+        previous_statements.push(statement);
+    }
+    previous_statements.push(SparseStatement::new(
+        parsed_commitment.num_variables,
+        logup_statements.bytecode_and_acc_point,
+        vec![SparseValue::new(
+            (2 << log_memory) >> bytecode.log_size(),
+            logup_statements.value_bytecode_acc,
+        )],
+    ));
 
     let global_statements_base = stacked_pcs_global_statements(
         parsed_commitment.num_variables,
@@ -214,7 +242,8 @@ pub fn verify_execution(
 
     // sanity check (not necessary for soundness)
     let num_whir_statements = global_statements_base.iter().map(|s| s.values.len()).sum::<usize>();
-    assert_eq!(num_whir_statements, total_whir_statements());
+    let fixed_statement_count = usize::from(!bytecode.fixed_read_only_data().is_empty());
+    assert_eq!(num_whir_statements, total_whir_statements() + fixed_statement_count);
 
     WhirConfig::new(&whir_config, parsed_commitment.num_variables).verify(
         &mut verifier_state,

@@ -278,12 +278,12 @@ fn execute_bytecode_helper(
     let hint_data = &witness.hints;
     let mut hint_indices = vec![0usize; n_slots];
 
-    // Read-only bytecode data is part of public memory, so the proof binds every
-    // constant without spending VM instructions copying it into runtime memory.
-    let public_memory = bytecode.public_memory(public_input);
-    let public_memory_len = public_memory.len();
-    let mut memory = Memory::new(public_memory);
-    let mut fp = public_memory_len + witness.preamble_memory_len;
+    // Public read-only bytecode data is checked by the public-memory opening.
+    // Fixed read-only data is loaded after it and checked by a separate fixed-memory opening.
+    let public_memory_len = bytecode.public_memory_len();
+    let initial_memory_len = bytecode.initial_memory_len();
+    let mut memory = Memory::new(bytecode.initial_memory(public_input));
+    let mut fp = initial_memory_len + witness.preamble_memory_len;
     fp = fp.next_multiple_of(DIMENSION);
     let initial_ap = fp + bytecode.starting_frame_memory();
     let mut pc = STARTING_PC;
@@ -363,7 +363,7 @@ fn execute_bytecode_helper(
     } else {
         None
     };
-    let runtime_memory_size = memory.0.len() - public_memory_len - witness.preamble_memory_len;
+    let runtime_memory_size = memory.0.len() - initial_memory_len - witness.preamble_memory_len;
     let used_memory_cells = parallel::map_reduce(
         memory.0.len(),
         || 0usize,

@@ -33,6 +33,9 @@ pub struct Bytecode {
     instructions_multilinear: Vec<F>,
     /// Public read-only values loaded after the fixed public input before execution.
     read_only_data: Vec<F>,
+    /// Verifier-known fixed values loaded after public memory. They are bound by
+    /// a separate memory-opening statement instead of the public-memory prefix.
+    fixed_read_only_data: Vec<F>,
     starting_frame_memory: usize,
     ending_pc: usize, // always `code.len() - 1`
     hash: [F; DIGEST_ELEMS],
@@ -70,6 +73,7 @@ impl Bytecode {
             hint_name_to_index,
             instructions_multilinear,
             read_only_data: Vec::new(),
+            fixed_read_only_data: Vec::new(),
             starting_frame_memory,
             ending_pc,
             hash,
@@ -103,6 +107,36 @@ impl Bytecode {
         &self.read_only_data
     }
 
+    /// Returns the verifier-known fixed segment loaded immediately after public memory.
+    pub fn fixed_read_only_data(&self) -> &[F] {
+        &self.fixed_read_only_data
+    }
+
+    /// Absolute memory address at which the fixed segment begins.
+    pub fn fixed_read_only_data_start(&self) -> usize {
+        if self.fixed_read_only_data.is_empty() {
+            return self.public_memory_len();
+        }
+        debug_assert!(self.fixed_read_only_data.len().is_power_of_two());
+        self.public_memory_len()
+            .next_multiple_of(self.fixed_read_only_data.len())
+    }
+
+    /// Length of public + fixed initial memory before witness preamble/runtime memory.
+    pub fn initial_memory_len(&self) -> usize {
+        self.fixed_read_only_data_start() + self.fixed_read_only_data.len()
+    }
+
+    /// Attaches verifier-known fixed data and binds its hash into the bytecode hash.
+    pub fn with_fixed_read_only_data(mut self, mut data: Vec<F>) -> Self {
+        if !data.is_empty() {
+            data.resize(data.len().next_power_of_two(), F::ZERO);
+        }
+        self.fixed_read_only_data = data;
+        self.refresh_hash();
+        self
+    }
+
     /// Attaches public read-only data and binds it into the bytecode hash.
     pub fn with_read_only_data(mut self, mut data: Vec<F>) -> Self {
         data.resize(data.len().next_multiple_of(DIGEST_ELEMS), F::ZERO);
@@ -120,20 +154,31 @@ impl Bytecode {
         memory
     }
 
+    /// Constructs the initial memory image: public memory followed by fixed data.
+    pub fn initial_memory(&self, public_input: &[F; PUBLIC_INPUT_LEN]) -> Vec<F> {
+        let mut memory = self.public_memory(public_input);
+        memory.resize(self.fixed_read_only_data_start(), F::ZERO);
+        memory.extend_from_slice(&self.fixed_read_only_data);
+        memory
+    }
+
     /// Returns the padded public-memory length without allocating the segment.
     pub fn public_memory_len(&self) -> usize {
         (PUBLIC_INPUT_LEN + self.read_only_data.len()).next_power_of_two()
     }
 
-    /// Recomputes the Fiat-Shamir bytecode hash after read-only data changes.
+    /// Recomputes the Fiat-Shamir bytecode hash after read-only/fixed data changes.
     fn refresh_hash(&mut self) {
-        let instruction_hash = poseidon_hash_slice(&self.instructions_multilinear);
-        self.hash = if self.read_only_data.is_empty() {
-            instruction_hash
-        } else {
+        let mut hash = poseidon_hash_slice(&self.instructions_multilinear);
+        if !self.read_only_data.is_empty() {
             let data_hash = poseidon_hash_slice(&self.read_only_data);
-            poseidon16_compress_pair(&instruction_hash, &data_hash)
-        };
+            hash = poseidon16_compress_pair(&hash, &data_hash);
+        }
+        if !self.fixed_read_only_data.is_empty() {
+            let fixed_hash = poseidon_hash_slice(&self.fixed_read_only_data);
+            hash = poseidon16_compress_pair(&hash, &fixed_hash);
+        }
+        self.hash = hash;
     }
 
     #[inline]
