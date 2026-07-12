@@ -12,3 +12,4 @@ clap.workspace = true
 lean_compiler.workspace = true
 lean_prover.workspace = true
 lean_vm.workspace = true
+postcard.workspace = true

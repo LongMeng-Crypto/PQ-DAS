@@ -29,6 +29,18 @@ pub struct ProofBundle {
     pub execution: ExecutionProof,
 }
 
+impl ProofBundle {
+    /// Returns the compact binary size of the LeanVM execution proof.
+    ///
+    /// `ExecutionProof` skips benchmark metadata during serde serialization, so this measures the
+    /// proof payload that would be transported rather than local profiling counters.
+    pub fn serialized_size_bytes(&self) -> usize {
+        postcard::to_allocvec(&self.execution)
+            .map(|bytes| bytes.len())
+            .unwrap_or_else(|_| self.execution.proof.proof_size_fe() * size_of::<u32>())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PreparedStatement {
     /// Public profile, row hashes, and column root represented by this statement.

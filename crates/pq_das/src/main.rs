@@ -1444,8 +1444,7 @@ fn print_v4_ext_table(results: &[v4_ext::ExtBenchmarkResult]) {
 
 fn v2_base_row(result: &v2_base::BenchmarkResult) -> String {
     let profile = result.profile;
-    let proof_field_elements = result.proof.execution.proof.proof_size_fe();
-    let proof_bytes = proof_field_elements * size_of::<u32>();
+    let proof_bytes = result.proof.serialized_size_bytes();
     let metadata = result.proof.execution.metadata.as_ref();
     let reconstruction = match result.reconstruction {
         Some(true) => format_duration(result.timings.reconstruct),
@@ -1481,8 +1480,7 @@ fn v2_base_row(result: &v2_base::BenchmarkResult) -> String {
 
 fn v2_ext_row(result: &v2_ext::ExtBenchmarkResult) -> String {
     let profile = result.profile;
-    let proof_field_elements = result.proof.execution.proof.proof_size_fe();
-    let proof_bytes = proof_field_elements * size_of::<u32>();
+    let proof_bytes = result.proof.serialized_size_bytes();
     let metadata = result.proof.execution.metadata.as_ref();
     let reconstruction = match result.reconstruction {
         Some(true) => format_duration(result.timings.reconstruct),
@@ -1517,8 +1515,7 @@ fn v2_ext_row(result: &v2_ext::ExtBenchmarkResult) -> String {
 
 fn v3_base_row(result: &v3_base::BenchmarkResult) -> String {
     let profile = result.profile;
-    let proof_field_elements = result.proof.execution.proof.proof_size_fe();
-    let proof_bytes = proof_field_elements * size_of::<u32>();
+    let proof_bytes = result.proof.serialized_size_bytes();
     let metadata = result.proof.execution.metadata.as_ref();
     let reconstruction = match result.reconstruction {
         Some(true) => format_duration(result.timings.reconstruct),
@@ -1553,8 +1550,7 @@ fn v3_base_row(result: &v3_base::BenchmarkResult) -> String {
 
 fn v3_ext_row(result: &v3_ext::ExtBenchmarkResult) -> String {
     let profile = result.profile;
-    let proof_field_elements = result.proof.execution.proof.proof_size_fe();
-    let proof_bytes = proof_field_elements * size_of::<u32>();
+    let proof_bytes = result.proof.serialized_size_bytes();
     let commitment_bytes = v3_ext::commitment_size_bytes(&result.commitment);
     let sample_bytes = v3_ext::transcript_size_bytes(&result.transcript);
     let metadata = result.proof.execution.metadata.as_ref();
@@ -1596,8 +1592,7 @@ fn v3_ext_row(result: &v3_ext::ExtBenchmarkResult) -> String {
 
 fn v4_ext_row(result: &v4_ext::ExtBenchmarkResult) -> String {
     let profile = result.profile;
-    let proof_field_elements = result.proof.execution.proof.proof_size_fe();
-    let proof_bytes = proof_field_elements * size_of::<u32>();
+    let proof_bytes = result.proof.serialized_size_bytes();
     let commitment_bytes = v4_ext::commitment_size_bytes(&result.commitment);
     let sample_bytes = v4_ext::transcript_size_bytes(&result.transcript);
     let metadata = result.proof.execution.metadata.as_ref();
