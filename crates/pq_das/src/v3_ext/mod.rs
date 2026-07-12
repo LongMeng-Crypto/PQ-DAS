@@ -1238,12 +1238,16 @@ pub fn check_vector(commitment: &ExtCommitment) -> Option<ExtCheckVector> {
         x *= omega_sq;
     }
     batch_invert(&mut denominators);
-    let mut vector = vec![[F::ZERO; EXT_DEGREE]; profile.m];
-    for (r, x) in xs.into_iter().enumerate() {
-        vector[r] = coeffs(common_p * EF::from(x) * denominators[2 * r]);
-        vector[profile.k + r] = coeffs(-(common_q * EF::from(x) * denominators[2 * r + 1]));
-    }
-    Some(vector)
+    Some(parallel::par_map_collect(profile.m, |index| {
+        if index < profile.k {
+            let x = EF::from(xs[index]);
+            coeffs(common_p * x * denominators[2 * index])
+        } else {
+            let r = index - profile.k;
+            let x = EF::from(xs[r]);
+            coeffs(-(common_q * x * denominators[2 * r + 1]))
+        }
+    }))
 }
 
 fn guest_source() -> ProgramSource {
@@ -1282,9 +1286,11 @@ fn leanvm_public_input() -> [F; DIGEST_LEN] {
 }
 
 fn read_only_data(commitment: &ExtCommitment, check_vector: &ExtCheckVector) -> Vec<F> {
-    let mut data = Vec::with_capacity(DIGEST_LEN + commitment.profile.m * EXT_DEGREE);
-    data.extend_from_slice(&commitment.root);
-    data.extend(check_vector.iter().flatten().copied());
+    let mut data = vec![F::ZERO; DIGEST_LEN + commitment.profile.m * EXT_DEGREE];
+    data[..DIGEST_LEN].copy_from_slice(&commitment.root);
+    parallel::par_chunks_mut(&mut data[DIGEST_LEN..], EXT_DEGREE, |index, slot| {
+        slot.copy_from_slice(&check_vector[index]);
+    });
     data
 }
 
