@@ -906,19 +906,12 @@ impl ExtErasureDecoder {
     }
 }
 
-/// Encodes extension-field coefficients by zero-padding to half rate and applying an NTT.
-pub fn encode_blob(profile: ExtProfile, blob: &[EF]) -> ExtCodeword {
-    assert_eq!(blob.len(), profile.k);
-    let mut codeword = vec![EF::ZERO; profile.m];
-    codeword[..profile.k].copy_from_slice(blob);
-    fft(&mut codeword);
-    codeword
-}
-
-/// RS-encodes all extension-field blobs. Rows are independent, so the host preparation runs them in parallel.
-pub fn encode(profile: ExtProfile, data: &ExtData) -> ExtCodewords {
-    assert_eq!(data.len(), profile.n);
-    parallel::par_map_collect(data.len(), |row| encode_blob(profile, &data[row]))
+fn logical_to_physical(profile: ExtProfile, index: usize) -> usize {
+    if index.is_multiple_of(2) {
+        index / 2
+    } else {
+        profile.k + index / 2
+    }
 }
 
 fn physical_to_logical(profile: ExtProfile, index: usize) -> usize {
@@ -929,16 +922,41 @@ fn physical_to_logical(profile: ExtProfile, index: usize) -> usize {
     }
 }
 
-fn logical_to_physical_codeword(profile: ExtProfile, row: &[EF]) -> ExtCodeword {
-    (0..profile.m)
-        .map(|index| row[physical_to_logical(profile, index)])
-        .collect()
+fn logical_to_physical_in_place(profile: ExtProfile, codeword: &mut [EF]) {
+    debug_assert_eq!(codeword.len(), profile.m);
+    let mut visited = vec![false; profile.m];
+    for start in 0..profile.m {
+        if visited[start] {
+            continue;
+        }
+        let mut current = start;
+        let mut carry = codeword[current];
+        loop {
+            visited[current] = true;
+            let next = logical_to_physical(profile, current);
+            carry = std::mem::replace(&mut codeword[next], carry);
+            current = next;
+            if current == start {
+                break;
+            }
+        }
+    }
 }
 
-fn physical_codewords(profile: ExtProfile, codewords: ExtCodewords) -> ExtCodewords {
-    parallel::par_map_collect(codewords.len(), |row| {
-        logical_to_physical_codeword(profile, &codewords[row])
-    })
+/// Encodes extension-field coefficients and leaves the codeword in physical cell order.
+pub fn encode_blob(profile: ExtProfile, blob: &[EF]) -> ExtCodeword {
+    assert_eq!(blob.len(), profile.k);
+    let mut codeword = vec![EF::ZERO; profile.m];
+    codeword[..profile.k].copy_from_slice(blob);
+    fft(&mut codeword);
+    logical_to_physical_in_place(profile, &mut codeword);
+    codeword
+}
+
+/// RS-encodes all extension-field blobs. Rows are independent, so the host preparation runs them in parallel.
+pub fn encode(profile: ExtProfile, data: &ExtData) -> ExtCodewords {
+    assert_eq!(data.len(), profile.n);
+    parallel::par_map_collect(data.len(), |row| encode_blob(profile, &data[row]))
 }
 
 fn push_ext(out: &mut Vec<F>, value: EF) {
@@ -981,9 +999,75 @@ fn compression_chain_from_chunks(chunks: &mut impl Iterator<Item = Digest>) -> D
     })
 }
 
-/// Hashes one extension-field cell after serializing it to KoalaBear coordinates.
+/// Hashes one extension-field cell by streaming its KoalaBear coordinates without allocating.
 pub fn cell_hash(cell: &[EF]) -> Digest {
-    fixed_compression_hash(&ext_slice_to_base(cell))
+    debug_assert!(!cell.is_empty());
+    debug_assert!((cell.len() * EXT_DEGREE).is_multiple_of(DIGEST_LEN));
+    let zero = [F::ZERO; DIGEST_LEN];
+    let mut first = [F::ZERO; DIGEST_LEN];
+    let mut chunk = [F::ZERO; DIGEST_LEN];
+    let mut chunk_pos = 0usize;
+    let mut chunk_count = 0usize;
+    let mut state = [F::ZERO; DIGEST_LEN];
+
+    for value in cell {
+        for &coord in value.as_basis_coefficients_slice() {
+            chunk[chunk_pos] = coord;
+            chunk_pos += 1;
+            if chunk_pos == DIGEST_LEN {
+                if chunk_count == 0 {
+                    first = chunk;
+                } else if chunk_count == 1 {
+                    state = poseidon16_compress_pair(&first, &chunk);
+                } else {
+                    state = poseidon16_compress_pair(&state, &chunk);
+                }
+                chunk = [F::ZERO; DIGEST_LEN];
+                chunk_pos = 0;
+                chunk_count += 1;
+            }
+        }
+    }
+
+    debug_assert_eq!(chunk_pos, 0);
+    match chunk_count {
+        0 => unreachable!("non-empty cell must produce at least one chunk"),
+        1 => poseidon16_compress_pair(&zero, &first),
+        _ => state,
+    }
+}
+
+fn merkle_root_16(leaves: &[Digest]) -> Digest {
+    debug_assert_eq!(leaves.len(), 16);
+    let mut level_8 = [[F::ZERO; DIGEST_LEN]; 8];
+    for node in 0..8 {
+        level_8[node] = poseidon16_compress_pair(&leaves[2 * node], &leaves[2 * node + 1]);
+    }
+    let mut level_4 = [[F::ZERO; DIGEST_LEN]; 4];
+    for node in 0..4 {
+        level_4[node] = poseidon16_compress_pair(&level_8[2 * node], &level_8[2 * node + 1]);
+    }
+    let mut level_2 = [[F::ZERO; DIGEST_LEN]; 2];
+    for node in 0..2 {
+        level_2[node] = poseidon16_compress_pair(&level_4[2 * node], &level_4[2 * node + 1]);
+    }
+    poseidon16_compress_pair(&level_2[0], &level_2[1])
+}
+
+fn merkle_root_no_layers(leaves: &[Digest]) -> Digest {
+    assert!(leaves.len().is_power_of_two());
+    if leaves.len() == 16 {
+        return merkle_root_16(leaves);
+    }
+    let mut layer = leaves.to_vec();
+    let mut len = layer.len();
+    while len > 1 {
+        for node in 0..len / 2 {
+            layer[node] = poseidon16_compress_pair(&layer[2 * node], &layer[2 * node + 1]);
+        }
+        len /= 2;
+    }
+    layer[0]
 }
 
 fn row_hash_from_cell_digests(profile: ExtProfile, n_padded: usize, cell_digests: &[Digest], row: usize) -> Digest {
@@ -997,7 +1081,7 @@ pub fn encode_and_commit(profile: ExtProfile, data: &ExtData) -> Result<(ExtComm
     if data.len() != profile.n || data.iter().any(|blob| blob.len() != profile.k) {
         return Err(DemoError::InvalidDataShape);
     }
-    let codewords = physical_codewords(profile, encode(profile, data));
+    let codewords = encode(profile, data);
     let n_padded = padded_rows(profile);
     let zero = [F::ZERO; DIGEST_LEN];
     let mut cell_digests = vec![zero; profile.n_cells() * n_padded];
@@ -1012,11 +1096,9 @@ pub fn encode_and_commit(profile: ExtProfile, data: &ExtData) -> Result<(ExtComm
     });
     let mut row_leaves = vec![zero; n_padded];
     row_leaves[..profile.n].copy_from_slice(&row_hashes);
-    let row_root = merkle_layers(&row_leaves).last().unwrap()[0];
+    let row_root = merkle_root_no_layers(&row_leaves);
     let column_roots = parallel::par_map_collect(profile.n_cells(), |cell| {
-        merkle_layers(&cell_digests[cell * n_padded..(cell + 1) * n_padded])
-            .last()
-            .unwrap()[0]
+        merkle_root_no_layers(&cell_digests[cell * n_padded..(cell + 1) * n_padded])
     });
     let outer_merkle_layers = merkle_layers(&column_roots);
     let root_col = outer_merkle_layers.last().unwrap()[0];
@@ -1251,7 +1333,7 @@ pub fn verify_openings(commitment: &ExtCommitment, transcript: &ExtTranscript) -
         for (row, cell) in opening.cells.iter().enumerate() {
             leaves[row] = fixed_compression_hash(cell);
         }
-        let mut digest = merkle_layers(&leaves).last().unwrap()[0];
+        let mut digest = merkle_root_no_layers(&leaves);
         let mut node = opening.index;
         for sibling in &opening.outer_authentication_path {
             digest = if node.is_multiple_of(2) {
@@ -1356,7 +1438,7 @@ mod tests {
             whir_log_inv_rate: 1,
         };
         let data = demo_data(profile);
-        let codewords = physical_codewords(profile, encode(profile, &data));
+        let codewords = encode(profile, &data);
         let cell = 1;
         let physical_indices: Vec<_> = (0..profile.c).map(|offset| cell * profile.c + offset).collect();
         let logical_indices: Vec<_> = physical_indices
