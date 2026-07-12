@@ -8,7 +8,9 @@ use crate::{
         grammar::{ParsePair, Rule},
     },
 };
-use lean_vm::{ALL_POSEIDON16_NAMES, CUSTOM_HINTS, ExtensionOpMode, PQ_DAS_MEMBERSHIP_BATCH_NAME};
+use lean_vm::{
+    ALL_POSEIDON16_NAMES, CUSTOM_HINTS, ExtensionOpMode, PQ_DAS_COMMITMENT_NAME, PQ_DAS_MEMBERSHIP_BATCH_NAME,
+};
 
 /// Reserved function names that users cannot define.
 pub const RESERVED_FUNCTION_NAMES: &[&str] = &[
@@ -40,7 +42,7 @@ fn is_reserved_function_name(name: &str) -> bool {
     if ExtensionOpMode::from_name(name).is_some() {
         return true;
     }
-    if name == PQ_DAS_MEMBERSHIP_BATCH_NAME {
+    if name == PQ_DAS_MEMBERSHIP_BATCH_NAME || name == PQ_DAS_COMMITMENT_NAME {
         return true;
     }
     false

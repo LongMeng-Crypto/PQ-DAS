@@ -6,7 +6,7 @@ use backend::{
 };
 use lean_compiler::{CompilationFlags, ProgramSource, compile_program_with_flags};
 use lean_prover::{default_whir_config, prove_execution::prove_execution, verify_execution::verify_execution};
-use lean_vm::{Bytecode, EF, ExecutionWitness, F, Hints};
+use lean_vm::{Bytecode, EF, ExecutionWitness, F, Hints, PQ_DAS_COMMITMENT_SCRATCH_LEN};
 
 use crate::{
     DIGEST_LEN, DemoError, EXT_DEGREE, ProofBundle, fs_block,
@@ -1275,6 +1275,10 @@ fn compilation_flags(commitment: &ExtCommitment) -> Result<CompilationFlags, Dem
         ("OUTER_MERKLE_DEPTH_PLACEHOLDER", profile.merkle_depth()),
         ("PUBLIC_ROOT_PTR_PLACEHOLDER", root_ptr),
         ("CHECK_VECTOR_PTR_PLACEHOLDER", check_vector_ptr),
+        (
+            "PQ_DAS_COMMITMENT_SCRATCH_LEN_PLACEHOLDER",
+            PQ_DAS_COMMITMENT_SCRATCH_LEN,
+        ),
     ] {
         replacements.insert(name.to_string(), value.to_string());
     }

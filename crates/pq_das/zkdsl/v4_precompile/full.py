@@ -16,6 +16,7 @@ OUTER_MERKLE_DEPTH = OUTER_MERKLE_DEPTH_PLACEHOLDER
 
 PUBLIC_ROOT_PTR = PUBLIC_ROOT_PTR_PLACEHOLDER
 CHECK_VECTOR_PTR = CHECK_VECTOR_PTR_PLACEHOLDER
+PQ_DAS_COMMITMENT_SCRATCH_LEN = PQ_DAS_COMMITMENT_SCRATCH_LEN_PLACEHOLDER
 
 
 @inline
@@ -240,84 +241,17 @@ def merkle_root_16_column_into(leaves, dest):
     return
 
 
-# V4-precompile prototype: row-level compile-time macro expansion plus a real membership-batch table over existing
-# LeanVM Poseidon16 and ExtensionOp precompiles. The current zkDSL compiler
-# overflows its stack on full 1024-cell unrolling, so large cell loops remain
-# runtime loops while row and membership loops are expanded.
+# V4-precompile: relay the whole V3-ext commitment through a dedicated table,
+# then check all rows with one membership-batch table. Both macro tables call
+# existing LeanVM Poseidon/ExtensionOp tables, so the cryptographic relation is unchanged.
 def main():
     codewords = Array(N * M_EXT * DIM)
     hint_witness("codewords", codewords)
+
     public_root = PUBLIC_ROOT_PTR
     check_vector = CHECK_VECTOR_PTR
-
-    cell_digests = Array(N_CELLS * N_PADDED * DIGEST_LEN)
-    row_hashes = Array(N_PADDED * DIGEST_LEN)
-
-    for row in unroll(0, N):
-        row_base = codewords + row * M_EXT * DIM
-        first_digest = cell_digests + row * DIGEST_LEN
-        hash_cell_into(row_base, first_digest)
-
-        if SYSTEMATIC_CELLS == 1:
-            poseidon16_compress_half(zero_digest_ret(), first_digest, row_hashes + row * DIGEST_LEN)
-        else:
-            second_digest = cell_digests + (N_PADDED + row) * DIGEST_LEN
-            hash_cell_into(row_base + CELL_BASE_LEN, second_digest)
-
-            if SYSTEMATIC_CELLS == 2:
-                poseidon16_compress_half(first_digest, second_digest, row_hashes + row * DIGEST_LEN)
-            else:
-                row_states = Array((SYSTEMATIC_CELLS - 2) * DIGEST_LEN)
-                poseidon16_compress_half(first_digest, second_digest, row_states)
-                for cell in range(2, SYSTEMATIC_CELLS - 1):
-                    digest = cell_digests + (cell * N_PADDED + row) * DIGEST_LEN
-                    hash_cell_into(row_base + cell * CELL_BASE_LEN, digest)
-                    poseidon16_compress_half(
-                        row_states + (cell - 2) * DIGEST_LEN,
-                        digest,
-                        row_states + (cell - 1) * DIGEST_LEN,
-                    )
-
-                cell = SYSTEMATIC_CELLS - 1
-                digest = cell_digests + (cell * N_PADDED + row) * DIGEST_LEN
-                hash_cell_into(row_base + cell * CELL_BASE_LEN, digest)
-                poseidon16_compress_half(
-                    row_states + (SYSTEMATIC_CELLS - 3) * DIGEST_LEN,
-                    digest,
-                    row_hashes + row * DIGEST_LEN,
-                )
-
-        for cell in range(SYSTEMATIC_CELLS, N_CELLS):
-            digest = cell_digests + (cell * N_PADDED + row) * DIGEST_LEN
-            hash_cell_into(row_base + cell * CELL_BASE_LEN, digest)
-    for row in unroll(N, N_PADDED):
-        zero_digest(row_hashes + row * DIGEST_LEN)
-    root_row = Array(DIGEST_LEN)
-    if N_PADDED == 16:
-        merkle_root_16_from_digests_into(row_hashes, root_row)
-    else:
-        generic_root_row = merkle_root_from_digests(row_hashes, LOG_N_PADDED)
-        copy_digest(generic_root_row, root_row)
-
-    if N_PADDED != 16:
-        for cell in range(0, N_CELLS):
-            for row in unroll(N, N_PADDED):
-                zero_digest(cell_digests + (cell * N_PADDED + row) * DIGEST_LEN)
-
-    column_roots = Array(N_CELLS * DIGEST_LEN)
-    for cell in range(0, N_CELLS):
-        column_root = column_roots + cell * DIGEST_LEN
-        if N_PADDED == 16:
-            merkle_root_16_column_into(cell_digests + cell * N_PADDED * DIGEST_LEN, column_root)
-        else:
-            root = merkle_root_from_digests(cell_digests + cell * N_PADDED * DIGEST_LEN, LOG_N_PADDED)
-            copy_digest(root, column_root)
-
-    root_col = merkle_root_from_digests(column_roots, OUTER_MERKLE_DEPTH)
-    root = Array(DIGEST_LEN)
-    poseidon16_compress_half(root_row, root_col, root)
-    for i in unroll(0, DIGEST_LEN):
-        assert root[i] == public_root[i]
+    commitment_scratch = Array(PQ_DAS_COMMITMENT_SCRATCH_LEN_PLACEHOLDER)
+    pq_das_commitment(codewords, public_root, commitment_scratch, N, M_EXT, C_EXT)
 
     membership_results = Array(N * DIM)
     pq_das_membership_batch(codewords, check_vector, membership_results, N, M_EXT)

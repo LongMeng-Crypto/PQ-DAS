@@ -432,6 +432,13 @@ fn validate_instruction(instruction: &Instruction) -> Result<(), String> {
             PrecompileCompTimeArgs::PqDasMembershipBatch { rows, row_len } if *rows == 0 || *row_len == 0 => {
                 return Err("pq_das_membership_batch rows and row_len must be >= 1".to_string());
             }
+            PrecompileCompTimeArgs::PqDasCommitment {
+                rows,
+                row_len,
+                cell_size,
+            } if *rows == 0 || *row_len == 0 || *cell_size == 0 => {
+                return Err("pq_das_commitment rows, row_len, and cell_size must be >= 1".to_string());
+            }
             _ => {}
         }
     }

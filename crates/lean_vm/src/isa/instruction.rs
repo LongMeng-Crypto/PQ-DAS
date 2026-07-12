@@ -6,7 +6,7 @@ use crate::core::{F, Label};
 use crate::diagnostics::RunnerError;
 use crate::execution::memory::MemoryAccess;
 use crate::tables::TableT;
-use crate::{ExtensionOpMode, PQ_DAS_MEMBERSHIP_BATCH_NAME, Table, TableTrace};
+use crate::{ExtensionOpMode, PQ_DAS_COMMITMENT_NAME, PQ_DAS_MEMBERSHIP_BATCH_NAME, Table, TableTrace};
 use crate::{
     POSEIDON16_COMPRESS_HALF_NAME, POSEIDON16_HARDCODED_LEFT_NAME, POSEIDON16_PERMUTE_HALF_HARDCODED_LEFT_NAME,
     POSEIDON16_PERMUTE_HALF_NAME, POSEIDON16_PERMUTE_NAME, POSEIDON16_QUARTER_HARDCODED_LEFT_NAME,
@@ -81,6 +81,11 @@ pub enum PrecompileCompTimeArgs<S> {
         rows: S,
         row_len: S,
     },
+    PqDasCommitment {
+        rows: S,
+        row_len: S,
+        cell_size: S,
+    },
 }
 
 impl<S> PrecompileCompTimeArgs<S> {
@@ -89,6 +94,7 @@ impl<S> PrecompileCompTimeArgs<S> {
             Self::Poseidon16 { .. } => Table::poseidon16(),
             Self::ExtensionOp { .. } => Table::extension_op(),
             Self::PqDasMembershipBatch { .. } => Table::pq_das_membership_batch(),
+            Self::PqDasCommitment { .. } => Table::pq_das_commitment(),
         }
     }
 
@@ -107,6 +113,15 @@ impl<S> PrecompileCompTimeArgs<S> {
             Self::PqDasMembershipBatch { rows, row_len } => PrecompileCompTimeArgs::PqDasMembershipBatch {
                 rows: f(rows),
                 row_len: f(row_len),
+            },
+            Self::PqDasCommitment {
+                rows,
+                row_len,
+                cell_size,
+            } => PrecompileCompTimeArgs::PqDasCommitment {
+                rows: f(rows),
+                row_len: f(row_len),
+                cell_size: f(cell_size),
             },
         }
     }
@@ -307,6 +322,16 @@ impl<V: Display, S: Display> Display for PrecompileArgs<V, S> {
                 write!(
                     f,
                     "{PQ_DAS_MEMBERSHIP_BATCH_NAME}({arg_0}, {arg_1}, {res}, rows={rows}, row_len={row_len})"
+                )
+            }
+            PrecompileCompTimeArgs::PqDasCommitment {
+                rows,
+                row_len,
+                cell_size,
+            } => {
+                write!(
+                    f,
+                    "{PQ_DAS_COMMITMENT_NAME}({arg_0}, {arg_1}, {res}, rows={rows}, row_len={row_len}, cell_size={cell_size})"
                 )
             }
         }

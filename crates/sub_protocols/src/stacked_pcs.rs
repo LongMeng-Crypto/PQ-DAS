@@ -85,14 +85,16 @@ pub fn stacked_pcs_global_statements(
                         .collect(),
                 ));
             }
-            global_statements.push(SparseStatement::new(
-                stacked_n_vars,
-                point.clone(),
-                eq_values
-                    .iter()
-                    .map(|(&col_index, &value)| SparseValue::new((offset >> n_vars) + col_index, value))
-                    .collect(),
-            ));
+            if !eq_values.is_empty() {
+                global_statements.push(SparseStatement::new(
+                    stacked_n_vars,
+                    point.clone(),
+                    eq_values
+                        .iter()
+                        .map(|(&col_index, &value)| SparseValue::new((offset >> n_vars) + col_index, value))
+                        .collect(),
+                ));
+            }
         }
     }
     global_statements

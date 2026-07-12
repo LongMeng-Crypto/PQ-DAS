@@ -4,6 +4,9 @@ pub use extension_op::*;
 mod pq_das_membership;
 pub use pq_das_membership::*;
 
+mod pq_das_commitment;
+pub use pq_das_commitment::*;
+
 mod poseidon;
 pub use poseidon::*;
 
