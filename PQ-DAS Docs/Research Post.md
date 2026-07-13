@@ -7,11 +7,11 @@ table td:nth-child(1) { white-space: nowrap; }
 
 ## 1. Motivation
 
-Ethereum already uses data availability sampling (DAS) to let validators check large blob data by sampling a small number of authenticated positions from an erasure-coded object, rather than downloading the whole payload. As Ethereum moves toward post-quantum security, DAS constructions that rely on algebraic polynomial commitments such as KZG need hash-based, post-quantum alternatives. This post evaluates one repairable post-quantum DAS route: a Commitments-for-Arbitrary-Codes construction instantiated with Reed-Solomon encoding, hash commitments, and LeanVM proofs, with benchmarks for concrete blob-sized parameters. The implementation branch for the experiments is [LongMeng-Crypto/PQ-DAS `V2/V3-Demo`](https://github.com/LongMeng-Crypto/PQ-DAS/tree/V2%2FV3-Demo).
+Ethereum uses data availability sampling (DAS) to let validators check large blob data by sampling a small number of authenticated positions from an erasure-coded object, rather than downloading the whole payload. As Ethereum moves toward post-quantum security, DAS constructions that rely on algebraic polynomial commitments such as KZG need hash-based, post-quantum alternatives. This post evaluates one post-quantum DAS route: a Commitments-for-Arbitrary-Codes construction instantiated with Reed-Solomon encoding, hash commitments, and LeanVM proofs, with benchmarks for concrete blob-sized parameters. The implementation branch for the experiments is [LongMeng-Crypto/PQ-DAS `V2/V3-Demo`](https://github.com/LongMeng-Crypto/PQ-DAS/tree/V2%2FV3-Demo).
 
 ## 2. Introduction to DAS
 
-A DAS protocol consists of a data builder or prover, a set of verifiers, and a reconstruction party. The builder receives the payload data and produces the commitment and proof. Verifiers sample the commitment and verify the openings and the proof. The reconstruction party collects enough accepted transcripts and recovers the data. The syntax of a DAS protocol can be described as follows:
+A DAS protocol consists of a data builder or prover, a set of verifiers, and a reconstruction party. The builder receives the payload data and produces the commitment and proof. Verifiers sample the commitment and verify the openings and the proof. The reconstruction party collects enough accepted transcripts and recover the data. The syntax of a DAS protocol can be described as follows:
 
 - **$\mathsf{Setup}(1^\lambda)\rightarrow {\sf pp}$:** The setup algorithm takes input a security parameter $\lambda$, it outputs public parameters of the DAS protocol. 
 
@@ -23,93 +23,37 @@ A DAS protocol consists of a data builder or prover, a set of verifiers, and a r
 
 - **${\sf Ext}({\sf com},{\sf tran}_1,\ldots,{\sf tran}_z)\rightarrow{\sf data}/\bot$:** The reconstruction algorithm takes input a commitment $\mathsf{com}$ and a set of transcripts ${\sf tran}_1,\ldots,{\sf tran}_z$, it outputs the reconstructed data $\mathsf{data}$ or a rejection symbol $\bot$.
 
-Informally, a DAS scheme should satisfy completeness, soundness, consistency, subset soundness, repairability, and local accessibility. Completeness means that honestly generated commitments, proofs, openings, and reconstruction transcripts are accepted and recover the original data. Soundness means that an adversary cannot make verifiers accept a commitment to data that is not available for reconstruction. Consistency means that one commitment cannot lead different honest reconstruction procedures to two different payloads. Subset soundness strengthens sampling soundness by requiring that even a specified subset of accepting clients collectively samples enough information to make reconstruction possible except with small probability. Repairability means that accepted samples are not merely detection evidence, but can be used by the reconstruction algorithm to repair and recover missing data. Local accessibility means that a user can check and retrieve a small local part of the committed data with local openings and authentication information, without downloading the whole encoded object. The formal definitions are given in the DAS foundations paper: https://eprint.iacr.org/2023/1079.pdf.
+Informally, a DAS scheme should satisfy the following security properties: completeness, soundness, consistency, subset soundness, repairability, and local accessibility. The formal definition of these properties are defined at: https://eprint.iacr.org/2023/1079.pdf.
 
 ## 3. The benchmarked class of schemes
+The benchmarked class in this report is **Commitments for Arbitrary Codes** from the solution space of the [DAS foundations paper](https://eprint.iacr.org/2023/1079.pdf). In this class, the builder encodes the data with a chosen erasure code, commits to the encoded word, and proves that the committed object is a valid codeword. Sampling opens authenticated positions of that encoded word, while reconstruction uses accepted samples as erasure-code evaluations. 
 
-The benchmarked class in this report is **Commitments for Arbitrary Codes** from the solution space of the [DAS foundations paper](https://eprint.iacr.org/2023/1079.pdf). In this class, the builder encodes the data with a chosen erasure code, commits to the encoded word, and proves that the committed object is a valid codeword. Sampling opens authenticated positions of that encoded word, while reconstruction uses accepted samples as erasure-code evaluations. This is the class we benchmark because it lets us combine Reed-Solomon rows, hash-based commitments, transparent LeanVM proofs, and cell-level reconstruction in one repairable pipeline.
+**Other schemes.** The same solution space also includes commitments for tensor codes and commitments for interleaved codes from the [DAS foundations paper](https://eprint.iacr.org/2023/1079.pdf), as well as later systems such as FRIDA and [ZODA](https://angeris.github.io/papers/da-construction.pdf). Tensor-code schemes arrange data in a multidimensional code and check row/column or higher-dimensional consistency; interleaved-code schemes batch many codewords so one sampled coordinate opens aligned symbols across them; FRIDA uses transparent FRI-style proximity testing for availability; and ZODA uses a modified tensor-code encoding where sampled rows and columns serve as both data and proof material. 
 
-**Remark on other schemes.** The same solution space also includes commitments for tensor codes and commitments for interleaved codes from the [DAS foundations paper](https://eprint.iacr.org/2023/1079.pdf), as well as later systems such as FRIDA and [ZODA](https://angeris.github.io/papers/da-construction.pdf). Tensor-code schemes arrange data in a multidimensional code and check row/column or higher-dimensional consistency; interleaved-code schemes batch many codewords so one sampled coordinate opens aligned symbols across them; FRIDA uses transparent FRI-style proximity testing for availability; and ZODA uses a modified tensor-code encoding where sampled rows and columns serve as both data and proof material. These are important alternatives, but they are not the benchmark target here: the experiments below focus on the repairable arbitrary-code commitment route, where accepted samples are directly aligned with Reed-Solomon reconstruction.
-
-## 4. Commitments for Arbitrary Codes: Choice for Repairability 
-
-Repairability is the operational requirement that accepted DAS openings can later be used to reconstruct the original payload. This is stronger than saying that a verifier accepted a commitment: it says that the accepted material accumulated by the network is already the material needed by a decoder. In blockchain settings this distinction matters because data may need to be recovered after block acceptance by users, provers, archival nodes, or fraud-proof systems.
+**Why do we choose the Commitments-for-Arbitrary-Codes construction?** This is related to a security property called repairability. It is an operational requirement that accepted DAS openings can later be used to reconstruct the original payload. This is stronger than saying that a verifier accepted a commitment: it says that the accepted material accumulated by the network is already the material needed by a decoder. In blockchain settings this distinction matters because data may need to be recovered after block acceptance by users, provers, archival nodes, or fraud-proof systems.
 
 Commitments for Arbitrary Codes give a direct way to obtain this property. The builder first encodes the data into an erasure-codeword and then commits to that encoded object. The validity proof binds the committed object to the code, while the opening protocol reveals authenticated pieces of the same object. Therefore, once enough distinct accepted cells are collected, reconstruction can run the corresponding erasure decoder on exactly those cells.
 
-This is the reason this project focuses on Commitments for Arbitrary Codes. If the commitment layer is hash-based and the proof system is transparent and hash/symmetric-based, then the construction can be post-quantum. At the same time, because the opened objects are authenticated codeword cells, the construction retains the repair path from sampling transcripts to decoded data.
-
 ## 5. Commitments for Arbitrary Codes: Concrete Construction
+![image](https://hackmd.io/_uploads/S13ZCjfEzg.png)
 
-- **The Setup algorithm $\mathsf{Setup}(1^{\lambda}) \rightarrow {\sf pp}$:**
-    1. Choose a hash function $\mathsf{H}: \{0, 1\}^* \rightarrow \{0, 1\}^{\lambda}$ with domain-separated cell, chain, and Merkle tree calls.
-    2. Define the Reed-Solomon code ${\sf RS}[\mathbb{F}, {\sf U}, \rho]$ and its encoding algorithm $\mathcal{C}: \mathbb{F}^k \rightarrow \mathbb{F}^m$, where $\mathbb{F}$ is a finite field, ${\sf U}$ is the evaluation domain, $\rho$ is the code rate, $k$ is the input length, and $m=|{\sf U}|$ satisfies $k=\rho m$.
-    3. Define the number of field elements $c$ in a cell.
-    4. Define the reconstruction threshold $t=\left\lceil k/c\right\rceil$ in cells.
-    5. Define the public LeanVM parameters $\mathsf{pp}_{\sf STARK}$.
-    6. Output $\mathsf{pp}=(\mathsf{H},\mathbb{F},{\sf U},m,k,\rho,c,t,\mathsf{pp}_{\sf STARK})$.
+The protocol workflow is described as follows:
 
-- **The encoding algorithm $\mathsf{Com}({\sf pp},{\sf data})\rightarrow({\sf com},{\sf \tau})$:**
-    1. Parse ${\sf data}$ into blobs ${\sf data}=(b_1,\ldots,b_n)$, where each blob has $k$ symbols.
-    2. RS encode each blob into a codeword with $m$ symbols: for every $i\in[1,n]$, $\mathcal{C}(b_i)=w_i=(w_{i,1},\ldots,w_{i,m})\in\mathbb{F}^m$. The first $k$ symbols are systematic, i.e. for every $s\in[1,k]$, $w_{i,s}=b_{i,s}$.
-    3. Form a matrix whose $i$-th row is $w_i$. Group every $c$ consecutive field elements as a cell, so each row has $\ell=m/c$ cells. Let $W_{i,j}=(w_{i,(j-1)c+1},\ldots,w_{i,jc})\in\mathbb{F}^c$ denote the $j$-th cell in row $i$.
-    4. Hash every cell into a cell digest: for every $i\in[1,n]$ and $j\in[1,\ell]$, set $e_{i,j}=\mathsf{H}(W_{i,j})$.
-    5. Hash-chain the systematic cell digests on each row: for every $i\in[1,n]$, set $r_i=\mathsf{H}(e_{i,1},\ldots,e_{i,t})$.
-    6. Merkle-aggregate the row hashes: $\mathsf{root}_{\sf row}=\mathsf{Merkle.Com}(r_1,\ldots,r_n)$.
-    7. For every column of cell digests, compute a column root: for every $j\in[1,\ell]$, set $C_j=\mathsf{Merkle.Com}(e_{1,j},\ldots,e_{n,j})$.
-    8. Merkle-aggregate all column roots: ${\sf root}_{\sf col}=\mathsf{Merkle.Com}(C_1,\ldots,C_{\ell})$.
-    9. Aggregate the row and column roots: $\mathsf{root}=\mathsf{H}({\sf root}_{\sf row},{\sf root}_{\sf col})$.
-    10. Compute the public RS check vector $L$ outside the proof from the public parameters and $\mathsf{root}$ as described below.
-    11. Generate a LeanVM STARK proof $\pi\leftarrow{\sf LeanVM}.{\sf Prove}({\sf pp}_{\sf STARK},{\sf stmt},{\sf witn},\mathcal{R})$, where
-    $$
-    \begin{aligned}
-    \mathcal{R}=\{({\sf stmt},{\sf witn}) :\;&
-    {\sf stmt}=(\{r_i\}_{i\in[1,n]},L,{\sf root}_{\sf col}),\quad {\sf witn}=\{w_i\}_{i\in[1,n]},\\
-    &\forall i\in[1,n],j\in[1,\ell],\; e_{i,j}=\mathsf{H}(W_{i,j}),\\
-    &\forall i\in[1,n],\; r_i=\mathsf{H}(e_{i,1},\ldots,e_{i,t}),\\
-    &\mathsf{root}_{\sf row}=\mathsf{Merkle.Com}(r_1,\ldots,r_n),\\
-    &\forall j\in[1,\ell],\; C_j=\mathsf{Merkle.Com}(e_{1,j},\ldots,e_{n,j}),\\
-    &{\sf root}_{\sf col}=\mathsf{Merkle.Com}(C_1,\ldots,C_{\ell}),\\
-    &\forall i\in[1,n],\; \langle L,w_i\rangle=0\},\\
-    &\mathsf{root}=\mathsf{H}({\sf root}_{\sf row},{\sf root}_{\sf col}).
-    \end{aligned}
-    $$
-    12. Open the outer Merkle authentication paths for all column roots: $\{{\sf auth}_j\}_{j\in[1,\ell]}={\sf Merkle.Open}(C_1,\ldots,C_{\ell},{\sf root})$.
-    13. Output ${\sf com}=({\sf root},\pi)$ and ${\sf \tau}=(\{w_i\}_{i\in[1,n]},\{{\sf auth}_j\}_{j\in[1,\ell]})$.
+The public parameters fix the Poseidon hash function $\mathsf{H}$, a Reed-Solomon code ${\sf RS}[\mathbb{F},{\sf U},\rho]$, the row length $k$, the encoded row length $m$, the cell size $c$, the number of cells per row $\ell=m/c$, and the reconstruction threshold $t=\lceil k/c\rceil$. They also fix the LeanVM STARK proof-system parameters. In the benchmarked instantiation, each data object is parsed into $n$ blob rows, each row is encoded as one Reed-Solomon codeword, and the first $k$ symbols are systematic payload symbols.
 
-- **The query algorithm ${\sf V}^{\pi,Q}_1({\sf com})\rightarrow{\sf tran}$:**
-    1. Generate the query index set $Q\leftarrow{\sf Sample}(1^{\lambda})$.
-    2. Set ${\sf tran}=(Q,\{W_{1,j},\ldots,W_{n,j},{\sf auth}_j\}_{j\in Q})$.
+The commitment first arranges the encoded data as an $n\times m$ codeword matrix. Each row is split into $\ell$ consecutive cells $W_{i,j}$ of $c$ field elements. Every cell is hashed into a digest $e_{i,j}=\mathsf{H}(W_{i,j})$, so the construction works from a matrix of cell digests rather than directly from raw codeword symbols after this point.
 
-- **The verification algorithm ${\sf V}_2({\sf com},{\sf tran})\rightarrow b$:**
-    1. Recompute $L$ from the same public computations as the prover.
-    2. Verify the STARK proof by checking ${\sf LeanVM}.{\sf Verify}({\sf pp}_{\sf STARK},{\sf stmt},\pi)=1$.
-    3. Verify the openings: compute $e_{i,j}=\mathsf{H}(W_{i,j})$ for every $i\in[1,n]$ and $j\in Q$, compute $C_j=\mathsf{Merkle.Com}(e_{1,j},\ldots,e_{n,j})$ for every $j\in Q$, and check ${\sf Merkle}.{\sf Verify}({\sf root},\{C_j,{\sf auth}_j\}_{j\in Q})=1$.
-    4. If all checks pass, output $b=1$; otherwise output $0$.
+The row side commits only to the systematic portion of each encoded row. For every row $i$, the first $t$ cell digests, which cover the systematic payload cells, are hash-chained into a row digest $r_i=\mathsf{H}(e_{i,1},\ldots,e_{i,t})$. The row digests are then Merkle-aggregated into $\mathsf{root}_{\sf row}$. This row commitment gives a compact binding to each row's systematic data.
 
-- **The reconstruction algorithm ${\sf Ext}({\sf com},{\sf tran}_1,\ldots,{\sf tran}_z)\rightarrow{\sf data}/\bot$:**
-    1. For every $a\in[1,z]$, parse ${\sf tran}_a=(Q_a,\{W_{1,j},\ldots,W_{n,j},{\sf auth}_j\}_{j\in Q_a})$.
-    2. Check that ${\sf V}_2({\sf com},{\sf tran}_a)=1$ for all $a\in[1,z]$; otherwise return $\bot$.
-    3. Let $I=Q_1\cup Q_2\cup\cdots\cup Q_z$ be the union of query index sets.
-    4. Check $|I|\geq t$; if not, return $\bot$.
-    5. Reconstruct the data from the codeword symbols contained in the cells indexed by $I$: ${\sf data}={\sf Reconst}(\{W_{1,j},\ldots,W_{n,j}\}_{j\in I})$.
+Then the full encoded matrix is commited in column-major. For every cell column $j$, the digests $(e_{1,j},\ldots,e_{n,j})$ are Merkle-aggregated into a column root $C_j$. The column roots $(C_1,\ldots,C_{\ell})$ are then Merkle-aggregated into $\mathsf{root}_{\sf col}$. Finally, the public commitment root is $\mathsf{root}=\mathsf{H}(\mathsf{root}_{\sf row},\mathsf{root}_{\sf col})$.
 
-- **RS membership check used in the demo:** The current demo uses the special barycentric check for rate $\rho=1/2$.
-    1. Let ${\sf U}=\{\omega^0,\omega^1,\ldots,\omega^{m-1}\}$, where $\omega$ is a primitive $m$-th root of unity, and assume $m=2k=2h$.
-    2. Define $x_r=(\omega^2)^r$ for $r\in[0,h-1]$.
-    3. For each row $w_i$, define $A_i(x_r)=w_{i,2r}$ and $B_i(x_r)=w_{i,2r+1}$.
-    4. Sample $p\leftarrow\mathsf{H}({\sf pp},{\sf root})$ and set $q=p/\omega$.
-    5. Define $\ell_r(z)=\frac{z^h-1}{h}\cdot\frac{x_r}{z-x_r}$.
-    6. Compute the shared barycentric-check vector $L=(L_0,\ldots,L_{m-1})$, where $L_{2r}=\ell_r(p)$ and $L_{2r+1}=-\ell_r(q)$.
-    7. Inside the proof, check for every $i\in[1,n]$ that
-    $$
-    \begin{aligned}
-    \langle L,w_i\rangle
-    &=\sum_{j=0}^{m-1}L_jw_{i,j}
-      =\sum_{r=0}^{h-1}\ell_r(p)w_{i,2r}-\sum_{r=0}^{h-1}\ell_r(q)w_{i,2r+1}\\
-    &=A_i(p)-B_i(q)=A_i(p)-B_i(p/\omega)=0.
-    \end{aligned}
-    $$
+The LeanVM proof binds these commitments to valid Reed-Solomon codewords. The private witness is the codeword matrix. Inside the proof, LeanVM proves the computations of: (1) the witness cells $W_{i,j}$ are hashed to all cell digests $e_{i,j}$, (2) the systematic cell digests are hash chained to row hashes and all row hashes are Merkle-aggregated into a $\mathsf{root}_{\sf row}$, (3) each column of cells are Merkle aggregated into $(C_1,\ldots,C_{\ell})$ and further aggregated into $\mathsf{root}_{\sf col}$, and the final aggregation equals the public $\mathsf{root}$. It also checks Reed-Solomon membership from the barycentric check for every row using a public vector $L$.
+
+The vector $L$ is computed outside the proof from public data. In the benchmarked rate-$1/2$ setting, let ${\sf U}=\{1,\omega,\ldots,\omega^{m-1}\}$ and $m=2k=2h$. For $x_r=(\omega^2)^r$, each row can be viewed as two length-$h$ evaluations $A_i(x_r)=w_{i,2r}$ and $B_i(x_r)=w_{i,2r+1}$. Fiat-Shamir samples $p$ from the public parameters and $\mathsf{root}$, sets $q=p/\omega$, and defines the barycentric coefficients $L_{2r}=\ell_r(p)$ and $L_{2r+1}=-\ell_r(q)$. The proof checks $\langle L,w_i\rangle=0$ for every row, which is equivalent to $A_i(p)=B_i(p/\omega)$ for valid rate-$1/2$ codewords. The verifier independently recomputes the same $L$ from public data before verifying the LeanVM proof.
+
+A verifier samples a set $Q$ of cell-column indices. For each sampled column $j\in Q$, the opening transcript contains the cells $W_{1,j},\ldots,W_{n,j}$ and the authentication data needed to recompute the corresponding column root $C_j$ and then authenticate $C_j$ up to $\mathsf{root}_{\sf col}$ and the final $\mathsf{root}$. Verification first checks the LeanVM proof, then hashes the opened cells back into digests, recomputes each sampled inner column root, verifies the outer Merkle authentication path, and checks the final public root.
+
+Reconstruction uses the same accepted openings. Given enough accepted transcripts, the reconstruction algorithm verifies them, unions their sampled cell-column indices, and requires at least $t$ distinct columns. It then treats the opened cells as Reed-Solomon evaluations for each row and runs erasure decoding to recover the original systematic payload rows. Thus the sampling transcript is also repair material, not only evidence that a verifier accepted.
 
 ## 6. Input Parameters
 
@@ -129,31 +73,7 @@ This is the reason this project focuses on Commitments for Arbitrary Codes. If t
 | WHIR log inverse rate | LeanVM/WHIR proof-system rate parameter used by the execution proof. |
 | Upload/download bandwidth | Network bandwidth used in the full DAS throughput model; this report uses $50$ Mbps in each direction. |
 
-
-### Subset Soundness With Replacement
-
-The benchmark profiles use the with-replacement subset-soundness bound from the DAS security-definition style of Hall-Andersen, Simkin, and Wagner. Let $N_{\sf clients}$ be the total number of client transcripts, let $\epsilon$ be the fraction of clients targeted by the adversary, and let $L_{\sf sub}=\lceil \epsilon N_{\sf clients}\rceil$ be the selected accepting subset size. Let $\Delta=t-1$ be the largest number of served cell columns that is still below the reconstruction threshold, and let $\ell=m/c$ be the total number of cell columns.
-
-For sampling with replacement, one verifier who opens $q=|Q|$ columns lands entirely inside a fixed non-reconstructing set of size $\Delta$ with probability $(\Delta/\ell)^q$. Union-bounding over the bad served set and over the adversarially selected accepting client subset gives
-
-$\nu_{\sf sub}=\binom{\ell}{\Delta}\binom{N_{\sf clients}}{L_{\sf sub}}\left(\frac{\Delta}{\ell}\right)^{|Q|L_{\sf sub}}\le 2^{-\lambda}.$
-
-Equivalently, the opened-cell count used by one verifier is the smallest integer satisfying
-
-$|Q|_{\min}=\min\left\{q\in\mathbb{Z}_{\ge1}:\log_2\binom{\ell}{\Delta}+\log_2\binom{N_{\sf clients}}{L_{\sf sub}}+qL_{\sf sub}\log_2(\Delta/\ell)\le -\lambda\right\}.$
-
-Since $\log_2(\Delta/\ell)<0$, this can also be written as the closed-form requirement
-
-$$
-|Q|
-\ge
-\left\lceil
-\frac{\lambda+\log_2\binom{\ell}{\Delta}+\log_2\binom{N_{\sf clients}}{L_{\sf sub}}}
-{L_{\sf sub}\log_2(\ell/\Delta)}
-\right\rceil.
-$$
-
-In the benchmark tables, `Opened cells` is this $|Q|_{\min}$ value for the corresponding profile. For example, with $N_{\sf clients}=10000$, $\epsilon=0.01$, $L_{\sf sub}=100$, $\lambda=40$, $\ell=1024$, and $t=512$ so that $\Delta=511$, the formula gives $|Q|_{\min}=19$ and $\log_2\nu_{\sf sub}\approx -83.398$.
+**Remarks.** The number of sampled cell columns opened by a verifier, denoted by $|Q|$, is decided by the desired subset-soundness level. The formula for deriving it is shown in the Appendix. 
 
 ## 7. Benchmark Metrics
 
@@ -307,3 +227,29 @@ Here $D_{\mathrm{payload}}$ is the useful blob payload size, i.e. number of blob
 - **Parameter choice:** Cell size $c=32$ is the strongest current point for the 2x profile, $c=32$ and $c=64$ are both competitive for the 4x profile, and row counts around $n=12$ to $n=14$ avoid the large proving-time cliffs seen at exact larger powers of two.
 
 - **Main bottleneck:** The proof relation is still dominated by Poseidon calls for cell/row/column commitments and extension-field operations for RS membership. Reducing these costs inside LeanVM is the clearest path toward higher throughput.
+
+# Appendix
+### Subset Soundness With Replacement
+
+The benchmark profiles use the with-replacement subset-soundness bound from the DAS security-definition style of Hall-Andersen, Simkin, and Wagner. Let $N_{\sf clients}$ be the total number of client transcripts, let $\epsilon$ be the fraction of clients targeted by the adversary, and let $L_{\sf sub}=\lceil \epsilon N_{\sf clients}\rceil$ be the selected accepting subset size. Let $\Delta=t-1$ be the largest number of served cell columns that is still below the reconstruction threshold, and let $\ell=m/c$ be the total number of cell columns.
+
+For sampling with replacement, one verifier who opens $q=|Q|$ columns lands entirely inside a fixed non-reconstructing set of size $\Delta$ with probability $(\Delta/\ell)^q$. Union-bounding over the bad served set and over the adversarially selected accepting client subset gives
+
+$\nu_{\sf sub}=\binom{\ell}{\Delta}\binom{N_{\sf clients}}{L_{\sf sub}}\left(\frac{\Delta}{\ell}\right)^{|Q|L_{\sf sub}}\le 2^{-\lambda}.$
+
+Equivalently, the opened-cell count used by one verifier is the smallest integer satisfying
+
+$|Q|_{\min}=\min\left\{q\in\mathbb{Z}_{\ge1}:\log_2\binom{\ell}{\Delta}+\log_2\binom{N_{\sf clients}}{L_{\sf sub}}+qL_{\sf sub}\log_2(\Delta/\ell)\le -\lambda\right\}.$
+
+Since $\log_2(\Delta/\ell)<0$, this can also be written as the closed-form requirement
+
+$$
+|Q|
+\ge
+\left\lceil
+\frac{\lambda+\log_2\binom{\ell}{\Delta}+\log_2\binom{N_{\sf clients}}{L_{\sf sub}}}
+{L_{\sf sub}\log_2(\ell/\Delta)}
+\right\rceil.
+$$
+
+In the benchmark tables, `Opened cells` is this $|Q|_{\min}$ value for the corresponding profile. For example, with $N_{\sf clients}=10000$, $\epsilon=0.01$, $L_{\sf sub}=100$, $\lambda=40$, $\ell=1024$, and $t=512$ so that $\Delta=511$, the formula gives $|Q|_{\min}=19$ and $\log_2\nu_{\sf sub}\approx -83.398$.
