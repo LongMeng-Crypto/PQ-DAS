@@ -7,55 +7,89 @@ table td:nth-child(1) { white-space: nowrap; }
 
 ## 1. Motivation
 
-- **Data availability sampling (DAS):** DAS lets light clients gain confidence that block or blob data is available without downloading the full payload. A validator samples a few authenticated positions; if enough validators accept, the network treats the data as available.
+Data availability sampling is the mechanism that allows a distributed system to accept large data objects without requiring every validator to download them in full. Instead of checking the whole payload, validators check a small number of authenticated samples from an erasure-coded representation. If the sampling protocol is sound, then a producer who withholds too much data is detected with high probability, while honest data can still be accepted with small bandwidth and verification cost.
 
-- **Why availability is not just storage:** In a DA system, the useful guarantee is that honest parties can later recover the underlying data, not merely that a commitment was posted. A construction is more useful when sampled openings can become recovery material for the original payload.
+This problem is especially important for blockchain data availability layers. Modern rollup and sharding designs rely on the assumption that transaction or blob data remains available after a block is accepted. If the data later disappears, users may be unable to reconstruct state transitions, generate fraud proofs, or independently validate the system history. DAS is therefore not merely a compression technique for validators; it is a way to turn local randomized checks into a global availability guarantee.
 
-- **Post-quantum motivation:** Many deployed or proposed DAS systems rely on polynomial commitments such as KZG, which are not post-quantum. PQ-DAS asks whether we can build DAS from hash-based commitments and transparent proof systems while keeping practical prover and verifier costs.
+The post-quantum setting changes the design constraints. Many highly efficient DAS proposals use polynomial commitments such as KZG, whose security relies on algebraic assumptions that are not post-quantum. A post-quantum DAS construction should instead rely on hash-based commitments and transparent proof systems, while still preserving the operational properties that make DAS useful in practice: small samples, efficient verification, and the ability to recover data once enough openings have been collected.
 
-- **Engineering target:** The goal of this project is a repairable, hash-based, LeanVM-proved DAS construction with realistic blob sizes and measurable end-to-end performance.
+The purpose of this project is to evaluate whether a repairable post-quantum DAS construction can be made practical inside LeanVM. The main engineering question is not only whether the construction is asymptotically possible, but whether concrete parameters, proof sizes, sampling sizes, and prover throughput are compatible with realistic blob workloads. The implementation branch for the experiments in this report is [LongMeng-Crypto/PQ-DAS `V2/V3-Demo`](https://github.com/LongMeng-Crypto/PQ-DAS/tree/V2%2FV3-Demo).
 
-## 2. Solution Space
+## 2. Introduction to DAS
 
-- **Commitments for Arbitrary Codes:** The builder encodes the data with an arbitrary erasure code, commits to the encoded word, and proves that the committed word is a valid codeword. Validators sample authenticated codeword positions, and any sufficiently large set of accepted positions can be fed to the erasure decoder. This is the most flexible route for repairability because the opened samples are directly usable as decoding input.
+A DAS protocol consists of a data producer, a set of sampling verifiers, and a reconstruction procedure. The data producer commits to an encoded representation of the data and provides proof material; verifiers sample a small subset of positions; and any party that obtains enough accepted openings can reconstruct the original data.
 
-- **Commitments for Tensor Codes:** The data is arranged in a multidimensional tensor-code layout, and the commitment/proof checks consistency along tensor dimensions. Validators sample local views whose consistency implies global availability under the tensor-code structure. This can give efficient soundness from product-code structure, but the recovery interface is tied to the tensor layout rather than a generic set of authenticated RS cells.
+- **Parties:** The builder or prover receives the payload data and produces the commitment, auxiliary opening state, and proof. Validators or light clients sample the commitment and verify openings. A retriever or reconstruction party collects enough accepted transcripts and runs decoding to recover the data.
 
-- **Commitments for Interleaved Codes:** Multiple codewords are interleaved so that one sampled position opens aligned symbols from many rows. The construction amortizes commitment and sampling costs across a batch of codewords. It is attractive for batching, but its commitment structure is optimized for interleaved sampling rather than the simple “collect verified cells and decode” interface we want.
+- **Setup algorithm $\mathsf{Setup}(1^\lambda)\rightarrow {\sf pp}$:** On input a security parameter, setup outputs public parameters. These include the erasure code, evaluation domain, cell size, sampling rules, hash function, proof-system parameters, and reconstruction threshold.
 
-- **FRIDA:** FRIDA follows a transparent, FRI-style direction: encode the data, commit with hash-based structures, and use proximity/low-degree testing to support DAS without pairings. Validators check sampled openings together with transparent proof material. Its main advantage is post-quantum transparency, while its workflow is centered on proximity testing rather than making every accepted sample a direct repair cell.
+- **Commitment algorithm $\mathsf{Com}({\sf pp},{\sf data})\rightarrow({\sf com},{\sf aux})$:** On input public parameters and data, the builder encodes the data, computes a commitment, and produces auxiliary state for answering future openings. The output commitment ${\sf com}$ is public, while ${\sf aux}$ contains the encoded data, Merkle paths, or other opening state.
 
-- **ZODA:** ZODA is another post-quantum DAS direction based on hash-based commitments and transparent proofs. At a high level, the builder commits to encoded data and provides proof material that sampled openings are consistent with an available codeword. It is an important PQ reference point, but this project focuses on a repairable Encode + Prove construction implemented inside LeanVM.
+- **Query algorithm $\mathsf{Query}({\sf pp},{\sf com};r)\rightarrow Q$:** On input the public parameters, the commitment, and verifier randomness, the verifier samples a query set $Q$. In a cell-based DAS protocol, $Q$ is a set of cell-column indices.
 
-## 3. Chosen Direction: Repairable Encode + Prove
+- **Opening algorithm $\mathsf{Open}({\sf pp},{\sf aux},Q)\rightarrow {\sf tran}$:** On input the auxiliary opening state and query set, the builder returns a transcript containing the requested symbols or cells and their authentication data. The transcript should be small compared with the full encoded data.
 
-- **Repairability:** Repairability means that once the network has collected enough authenticated openings, those openings can be used to reconstruct the original data. This is stronger than merely accepting an availability statement: it gives the network a concrete recovery path if the original builder or storage providers disappear.
+- **Verification algorithm $\mathsf{Verify}({\sf pp},{\sf com},Q,{\sf tran})\rightarrow\{0,1\}$:** On input the commitment, query set, and transcript, the verifier checks the proof and the sampled openings. The output is $1$ if the transcript is accepted and $0$ otherwise.
 
-- **Why repairability matters:** In practical DA use cases, validators and users may need to recover data after the block has already been accepted. A DAS construction that only proves proximity or consistency is less useful if its sampled openings are not naturally organized as repair material.
+- **Reconstruction algorithm $\mathsf{Ext}({\sf pp},{\sf com},{\sf tran}_1,\ldots,{\sf tran}_z)\rightarrow {\sf data}/\bot$:** On input multiple accepted transcripts, the reconstruction algorithm verifies the openings, extracts their encoded symbols, and attempts to decode the original data. It outputs the recovered data or $\bot$ if the transcripts do not contain enough valid information.
 
-- **Why arbitrary-code Encode + Prove is the right fit:** In Commitments for Arbitrary Codes, the proof binds the committed object to a valid erasure-codeword, and each opened cell is authenticated against that same committed codeword. Therefore accepted cells are exactly the objects needed by the erasure decoder. Tensor, interleaved, and proximity-oriented designs can be efficient for sampling, but they do not expose the same generic repair interface as directly.
+The security requirements can be stated at a high level as follows.
 
-- **Post-quantum construction principle:** If the commitment is hash-based and the validity proof is produced by a transparent hash/symmetric-based proof system, then the construction avoids algebraic pairings and discrete-log assumptions. This gives a path to PQ-DAS while preserving repairability.
+- **Correctness:** If the builder is honest and the data is encoded correctly, then honestly generated openings verify and reconstruction recovers the original data once enough openings are available.
 
-- **Blob and encoding layout:** Each blob row is represented as extension-field symbols and encoded as a Reed-Solomon codeword. The main measured profile uses $k=16384$ payload symbols per row, $m=32768$ encoded symbols per row, and RS rate $1/2$.
+- **Availability soundness:** If a verifier accepts with sufficiently high probability, then the committed object should contain enough information for the data to be recovered. Informally, an adversary should not be able to make many verifiers accept while withholding too many encoded positions.
 
-- **Cell digest matrix:** Each encoded row is split into $\ell=1024$ cells, with $c=32$ extension-field symbols per cell. The proof hashes every cell into a cell digest, so both row commitments and column commitments are derived from the same digest matrix.
+- **Extractability:** An accepting commitment should correspond to extractable data. This rules out commitments that pass sampling checks but do not determine a recoverable payload.
 
-- **Systematic row commitment:** For each row, the systematic cell digests are hashed into a row digest. The row digests are then Merkle-aggregated into a row root. This binds the systematic payload-facing view of every row.
+- **Subset soundness:** Even if an adversary only needs to fool a selected subset of clients, the probability that all of those clients accept while the served samples remain below the reconstruction threshold should be small.
 
-- **Column commitment:** For every cell column, the proof builds an inner Merkle tree over the cell digests from all rows and obtains one column root. All column roots are then Merkle-aggregated into a column root. This is the object used for column sampling and opening verification.
+- **Binding or consistency:** The commitment must bind all accepted openings to a single encoded object. Two different transcripts accepted under the same commitment should not correspond to incompatible data.
 
-- **Final commitment:** The public commitment is a hash of the row root and column root. Thus the public root binds both the systematic row view and the column-sampling view of the same cell digest matrix.
+- **Repairability:** Accepted openings should be useful as reconstruction material. This property is operational rather than only game-based: the objects sampled by verifiers should be the same objects consumed by the decoder.
 
-- **LeanVM proof relation:** The private witness is the encoded codeword matrix. The LeanVM proof checks cell digest computation, systematic row commitment, row-root aggregation, inner and outer column Merkle commitments, final-root binding, and one Reed-Solomon membership check per row.
+## 3. Solution Space
 
-- **RS membership check:** Fiat-Shamir derives the public check vector $L$ outside the proof from the public parameters and root. The verifier independently recomputes the same $L$, while the proof only checks the inner products $\langle w_i,L\rangle=0$ inside LeanVM.
+- **Commitments for Arbitrary Codes:** The builder encodes the data using a chosen erasure code, commits to the encoded word, and proves or otherwise enforces that the committed word belongs to the code. Sampling opens authenticated positions of this encoded word. The construction is code-agnostic and can be instantiated with Reed-Solomon codes or other erasure codes.
 
-- **Opening and verification:** A verifier samples cell columns. The builder opens the corresponding codeword cells and Merkle authentication data, and the verifier recomputes cell digests, column roots, and the final public root.
+- **Commitments for Tensor Codes:** The data is arranged in a multidimensional tensor-code structure. Commitments and checks are organized along the tensor dimensions, so local consistency checks across rows, columns, or higher-dimensional slices imply global structure. This approach uses the algebraic structure of product codes to organize sampling and commitment verification.
 
-- **Reconstruction:** Once enough distinct cell columns are available, reconstruction uses FFT-based Reed-Solomon erasure decoding for arbitrary cell-erasure patterns. The decoder reconstructs the full row polynomial and then extracts the systematic payload.
+- **Commitments for Interleaved Codes:** Several codewords are batched by interleaving their symbols, so that one sampled position can open aligned symbols from many codewords. This amortizes authentication and sampling over multiple blobs or rows. The high-level workflow is to encode many objects, interleave their coordinates, commit to the interleaved representation, and sample aligned positions.
 
-## 4. Input Parameters
+- **FRIDA:** FRIDA follows a transparent, FRI-style approach to data availability. The builder commits to encoded data using hash-based structures and provides proximity-proof material showing that the committed object is close to a valid low-degree or codeword representation. Verifiers combine random samples with transparent proof checks rather than relying on pairing-based polynomial commitments.
+
+- **ZODA:** ZODA is a post-quantum DAS construction based on hash-based commitments and transparent proof techniques. At a high level, it encodes data, commits to the encoded representation, and provides proof material that sampled positions are consistent with an available codeword. Its workflow is designed to avoid trusted setup and pairing assumptions.
+
+## 4. Repairability and Encode + Prove
+
+Repairability is the property that accepted DAS openings can later be used to reconstruct the original payload. This matters because a DA system is not only trying to convince validators to vote on a block; it is also trying to ensure that the data needed by users, provers, and archival participants can be recovered after acceptance. A protocol that detects withholding but does not produce useful repair material leaves a practical gap between availability voting and actual data recovery.
+
+The Commitments-for-Arbitrary-Codes approach gives the cleanest repairability interface. The proof binds the committed object to a valid erasure-codeword, and the opening protocol reveals authenticated pieces of that same codeword. Once enough distinct accepted cells are collected, reconstruction can run the ordinary erasure decoder on those cells.
+
+This is why the project focuses on an Encode + Prove methodology. The builder first encodes the data, then proves that the committed encoded object satisfies the required code membership and commitment relations. If the commitment layer is hash-based and the proof system is transparent and hash/symmetric-based, the resulting DAS construction is post-quantum while retaining the practical repair path from samples to decoding.
+
+## 5. Concrete Construction
+
+- **Payload representation:** The implementation treats each blob row as extension-field symbols. This reduces the number of codeword positions compared with a base-field-only payload while remaining compatible with LeanVM extension-field arithmetic.
+
+- **RS encoding:** Each row is Reed-Solomon encoded from $k$ payload symbols to $m=2k$ codeword symbols. The encoded matrix has $n$ rows, one per blob, and $m$ symbols per row.
+
+- **Cell decomposition:** Every encoded row is partitioned into $\ell=m/c$ cells, each containing $c$ consecutive extension-field symbols. This produces an $n\times\ell$ cell matrix.
+
+- **Cell digest layer:** The proof hashes every cell into a digest. This digest matrix is the shared commitment interface used by both the systematic row commitment and the column-sampling commitment.
+
+- **Systematic row commitment:** For each row, the systematic cell digests are hashed into a row digest. The row digests are Merkle-aggregated into a row root, which binds the payload-facing systematic view.
+
+- **Column commitment:** For each cell column, an inner Merkle tree commits to the digests in that column and outputs one column root. The column roots are then Merkle-aggregated into a column root used for sampling.
+
+- **Final commitment:** The public commitment is a hash of the row root and the column root. This binds the systematic view and sampling view to the same cell digest matrix.
+
+- **Proof relation:** The LeanVM proof uses the encoded matrix as witness and proves cell digest computation, systematic row commitment, row-root aggregation, inner column Merkle trees, outer column Merkle aggregation, final-root binding, and Reed-Solomon membership for every row.
+
+- **Fiat-Shamir and membership:** The public check vector $L$ is derived outside the proof from public parameters and the public root. The verifier recomputes $L$ independently, while the proof checks only the inner products $\langle w_i,L\rangle=0$ for all rows.
+
+- **Opening and reconstruction:** A sampled opening reveals codeword cells and authentication data for the selected columns. After enough accepted columns are collected, reconstruction uses FFT-based arbitrary-erasure Reed-Solomon decoding to recover the original payload.
+
+## 6. Input Parameters
 
 | Parameter | Meaning |
 | --- | --- |
@@ -73,7 +107,7 @@ table td:nth-child(1) { white-space: nowrap; }
 | WHIR log inverse rate | LeanVM/WHIR proof-system rate parameter used by the execution proof. |
 | Upload/download bandwidth | Network bandwidth used in the full DAS throughput model; this report uses $50$ Mbps in each direction. |
 
-## 5. Benchmark Metrics
+## 7. Benchmark Metrics
 
 | Metric | Meaning |
 | --- | --- |
@@ -102,7 +136,7 @@ $$
 
 Here $D_{\mathrm{payload}}$ is the useful blob payload size, i.e. number of blobs times blob size with the extension-field bit-size correction. The upload and download times are computed from the uploaded/downloaded byte sizes and the assumed $50$ Mbps bandwidth. Reconstruction is reported separately because it is not on the critical path for validator acceptance.
 
-## 6. Benchmark Profile Names
+## 8. Benchmark Profile Names
 
 - **Format:** `ext-bY-cZ-rN-wR`.
 - **Field:** `ext` means quintic-extension payload symbols and quintic-extension RS membership checks.
@@ -110,7 +144,7 @@ Here $D_{\mathrm{payload}}$ is the useful blob payload size, i.e. number of blob
 - **Cell size:** `c16`, `c32`, `c64`, and `c128` record the number of extension-field symbols per cell.
 - **Rows and WHIR:** `r14` means $n=14$ rows, and `w1` means WHIR log inverse rate $1$.
 
-## 7. Extension-Field Parameter Summary
+## 9. Extension-Field Parameter Summary
 
 | Profile family | Rows $n$ | Symbol field | Challenge field | $k$ | $m$ | Cell size $c$ | Cells $\ell$ | Threshold $t$ | Opened cells | Public commitment | Membership |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
@@ -124,7 +158,7 @@ Here $D_{\mathrm{payload}}$ is the useful blob payload size, i.e. number of blob
 | `ext-b4-c32-r14-w1` | 14 | Quintic extension | Quintic extension | 32768 | 65536 | 32 | 2048 | 1024 | 29 | final root | `dot_product_ee` |
 | `ext-b4-c128-r14-w1` | 14 | Quintic extension | Quintic extension | 32768 | 65536 | 128 | 512 | 256 | 14 | final root | `dot_product_ee` |
 
-## 8. Sweep A: Blob Size
+## 10. Sweep A: Blob Size
 
 - Fixed parameters: $\ell=1024$, $n=14$, $t=512$, opened cells $=19$, WHIR log inverse rate $=1$.
 - Variable parameter: blob size, with $c$ scaled so that $\ell=m/c$ stays fixed.
@@ -135,7 +169,7 @@ Here $D_{\mathrm{payload}}$ is the useful blob payload size, i.e. number of blob
 | `ext-b2-c32-r14-w1` | 2x | 16384 | 32768 | 32 | 1024 | 4340 KiB | 367.91 KB | 172.86 KB | 0.495s | 0.076s | 4.808s | 0.081s | 0.040s | 0.009s | 0.313s | 1779460 | 295937 | 458752 | 902.66 KiB/s | 609.05 KiB/s | accepted |
 | `ext-b4-c64-r14-w1` | 4x | 32768 | 65536 | 64 | 1024 | 8680 KiB | 388.76 KB | 339.11 KB | 0.932s | 0.125s | 9.566s | 0.121s | 0.045s | 0.020s | 0.636s | 2639620 | 582657 | 917504 | 907.38 KiB/s | 623.21 KiB/s | accepted |
 
-## 9. Sweep B: Cell Size at 2x Blob Size
+## 11. Sweep B: Cell Size at 2x Blob Size
 
 - Fixed parameters: blob size $=2x$, $n=14$, $k=16384$, $m=32768$, WHIR log inverse rate $=1$.
 - Variable parameter: cell size $c$, which changes $\ell=m/c$, $t=k/c$, and the opened-cell count.
@@ -147,7 +181,7 @@ Here $D_{\mathrm{payload}}$ is the useful blob payload size, i.e. number of blob
 | `ext-b2-c64-r14-w1` | 64 | 512 | 256 | 14 | -97.448 | 4340 KiB | 369.10 KB | 249.43 KB | 0.516s | 0.066s | 5.350s | 0.071s | 0.046s | 0.017s | 0.351s | 1320196 | 291329 | 458752 | 811.21 KiB/s | 563.94 KiB/s | accepted |
 | `ext-b2-c128-r14-w1` | 128 | 256 | 128 | 11 | -57.495 | 4340 KiB | 368.95 KB | 388.14 KB | 0.531s | 0.063s | 5.441s | 0.072s | 0.047s | 0.024s | 0.356s | 1090564 | 289025 | 458752 | 797.65 KiB/s | 554.24 KiB/s | accepted |
 
-## 10. Sweep C: Row Count at 2x Blob Size
+## 12. Sweep C: Row Count at 2x Blob Size
 
 - Fixed parameters: blob size $=2x$, $c=32$, $k=16384$, $m=32768$, $\ell=1024$, $t=512$, opened cells $=19$, WHIR log inverse rate $=1$.
 - Variable parameter: row count $n$.
@@ -172,7 +206,7 @@ Here $D_{\mathrm{payload}}$ is the useful blob payload size, i.e. number of blob
 | `ext-b2-c32-r30-w1` | 30 | 9300 KiB | 388.67 KB | 362.86 KB | 1.137s | 0.093s | 12.130s | 0.102s | 0.046s | 0.020s | 0.710s | 3721716 | 631809 | 983040 | 766.69 KiB/s | 551.58 KiB/s | accepted |
 | `ext-b2-c32-r32-w1` | 32 | 9920 KiB | 350.37 KB | 386.61 KB | 1.211s | 0.095s | 21.419s | 0.322s | 0.058s | 0.023s | 1.080s | 3935803 | 671743 | 1048576 | 463.14 KiB/s | 372.07 KiB/s | accepted |
 
-## 11. Sweep D: Cell Size at 4x Blob Size
+## 13. Sweep D: Cell Size at 4x Blob Size
 
 - Fixed parameters: blob size $=4x$, $n=14$, $k=32768$, $m=65536$, WHIR log inverse rate $=1$.
 - Variable parameter: cell size $c$, which changes $\ell=m/c$, $t=k/c$, and the opened-cell count.
@@ -184,7 +218,7 @@ Here $D_{\mathrm{payload}}$ is the useful blob payload size, i.e. number of blob
 | `ext-b4-c64-r14-w1` | 64 | 1024 | 512 | 19 | -83.398 | 8680 KiB | 388.76 KB | 339.11 KB | 0.960s | 0.117s | 10.026s | 0.131s | 0.045s | 0.019s | 0.661s | 2639620 | 582657 | 917504 | 865.75 KiB/s | 602.07 KiB/s | accepted |
 | `ext-b4-c128-r14-w1` | 128 | 512 | 256 | 14 | -97.448 | 8680 KiB | 388.73 KB | 494.43 KB | 0.996s | 0.100s | 10.616s | 0.109s | 0.044s | 0.027s | 0.674s | 2180356 | 578049 | 917504 | 817.63 KiB/s | 577.27 KiB/s | accepted |
 
-## 12. Sweep E: Row Count at 4x Blob Size
+## 14. Sweep E: Row Count at 4x Blob Size
 
 - Fixed parameters: blob size $=4x$, $c=32$, $k=32768$, $m=65536$, $\ell=2048$, $t=1024$, opened cells $=29$, WHIR log inverse rate $=1$.
 - Variable parameter: row count $n$.
@@ -201,7 +235,7 @@ Here $D_{\mathrm{payload}}$ is the useful blob payload size, i.e. number of blob
 | `ext-b4-c32-r14-w1` | 14 | 8680 KiB | 390.29 KB | 264.74 KB | 1.038s | 0.168s | 11.937s | 0.192s | 0.045s | 0.015s | 0.703s | 3558148 | 591873 | 917504 | 727.15 KiB/s | 525.99 KiB/s | accepted |
 | `ext-b4-c32-r16-w1` | 16 | 9920 KiB | 353.09 KB | 300.99 KB | 1.199s | 0.180s | 21.605s | 0.404s | 0.051s | 0.017s | 1.062s | 3986251 | 671743 | 1048576 | 459.15 KiB/s | 367.73 KiB/s | accepted |
 
-## 13. Sweep F: WHIR Rate
+## 15. Sweep F: WHIR Rate
 
 - Fixed candidates: `ext-b2-c32-r14-w1` and `ext-b4-c64-r14-w1`.
 - Variable parameter: WHIR log inverse rate $r\in\{1,2\}$ under the default LeanVM folding factors.
@@ -216,7 +250,7 @@ Here $D_{\mathrm{payload}}$ is the useful blob payload size, i.e. number of blob
 - WHIR log inverse rate $r$ means the WHIR proof-system RS rate is $2^{-r}$, so $r=1$ is rate $1/2$ and $r=2$ is rate $1/4$.
 - Rates $r=3,4$ correspond to WHIR rates $1/8$ and $1/16$, but the target extension-field profiles panic in WHIR config construction with `Increase folding_factor_0` under LeanVM's default `WHIR_INITIAL_FOLDING_FACTOR=7`. Supporting them would require changing the global WHIR initial folding factor and synchronizing verifier/recursion configuration, so they are not included as a one-variable benchmark sweep.
 
-## 14. Summary
+## 16. Summary
 
 - **Main outcome:** A repairable post-quantum Encode + Prove DAS construction can be implemented with hash-based commitments and LeanVM proofs at roughly $0.9$ MiB/s across the strongest measured repairable profiles, with single-profile runs occasionally reaching about $1$ MiB/s.
 
