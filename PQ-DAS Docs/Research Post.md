@@ -17,9 +17,9 @@ The purpose of this project is to evaluate whether a repairable post-quantum DAS
 
 ## 2. Introduction to DAS
 
-A DAS protocol consists of a data builder or prover, a set of sampling verifiers, and a reconstruction procedure. The data producer commits to an encoded representation of the data and provides proof material; verifiers sample a small subset of positions; and any party that obtains enough accepted openings can reconstruct the original data.
+A DAS protocol consists of a data builder or prover, a set of sampling verifiers, and a reconstruction procedure. The builder receives the payload data and produces the commitment, auxiliary opening state, and proof. Verifiers sample the commitment and verify openings. The reconstruction party collects enough accepted transcripts and runs decoding to recover the data.
 
-- **Parties:** The builder or prover receives the payload data and produces the commitment, auxiliary opening state, and proof. Validators or light clients sample the commitment and verify openings. A retriever or reconstruction party collects enough accepted transcripts and runs decoding to recover the data.
+- **Parties:** The builder/prover holds the payload and answers openings; verifiers or light clients sample the commitment and verify transcripts; a reconstruction party aggregates accepted transcripts and runs decoding.
 
 - **Setup algorithm $\mathsf{Setup}(1^\lambda)\rightarrow {\sf pp}$:** On input a security parameter, setup outputs public parameters. These include the erasure code, evaluation domain, cell size, sampling rules, hash function, proof-system parameters, and reconstruction threshold.
 
@@ -29,65 +29,115 @@ A DAS protocol consists of a data builder or prover, a set of sampling verifiers
 
 - **Opening algorithm $\mathsf{Open}({\sf pp},{\sf aux},Q)\rightarrow {\sf tran}$:** On input the auxiliary opening state and query set, the builder returns a transcript containing the requested symbols or cells and their authentication data. The transcript should be small compared with the full encoded data.
 
-- **Verification algorithm $\mathsf{Verify}({\sf pp},{\sf com},Q,{\sf tran})\rightarrow\{0 / 1\}$:** On input the commitment, query set, and transcript, the verifier checks the proof and the sampled openings. The output is $1$ if the transcript is accepted and $0$ otherwise.
+- **Verification algorithm $\mathsf{Verify}({\sf pp},{\sf com},Q,{\sf tran})\rightarrow\{0,1\}$:** On input the commitment, query set, and transcript, the verifier checks the proof and the sampled openings. The output is $1$ if the transcript is accepted and $0$ otherwise.
 
 - **Reconstruction algorithm $\mathsf{Ext}({\sf pp},{\sf com},{\sf tran}_1,\ldots,{\sf tran}_z)\rightarrow {\sf data}/\bot$:** On input multiple accepted transcripts, the reconstruction algorithm verifies the openings, extracts their encoded symbols, and attempts to decode the original data. It outputs the recovered data or $\bot$ if the transcripts do not contain enough valid information.
 
-The security requirements can be stated at a high level as follows.
+Following the security terminology of Hall-Andersen, Simkin, and Wagner, a DAS construction should satisfy the following properties at a conceptual level.
 
-- **Correctness:** If the builder is honest and the data is encoded correctly, then honestly generated openings verify and reconstruction recovers the original data once enough openings are available.
+- **Completeness:** For honestly generated public parameters, commitments, queries, and openings, the verifier accepts. If enough honest accepted transcripts are provided to reconstruction, the reconstruction algorithm outputs the original data.
 
-- **Soundness:** If a verifier accepts with sufficiently high probability, then the committed object should contain enough information for the data to be recovered. Informally, an adversary should not be able to make many verifiers accept while withholding too many encoded positions.
+- **Soundness:** If a malicious builder makes verifiers accept with non-negligible probability, then the accepted transcripts must contain enough information to determine recoverable data. Equivalently, the adversary should not be able to make the network accept a commitment while withholding too much of the encoded object.
 
-- **Extractability:** An accepting commitment should correspond to extractable data. This rules out commitments that pass sampling checks but do not determine a recoverable payload.
+- **Consistency:** A fixed commitment should not admit two different valid explanations. Any two sufficiently large sets of accepting transcripts for the same commitment must reconstruct to the same data.
 
-- **Subset soundness:** Even if an adversary only needs to fool a selected subset of clients, the probability that all of those clients accept while the served samples remain below the reconstruction threshold should be small.
+- **Subset soundness:** Soundness must hold even for a chosen subset of accepting clients. An adversary should not be able to make many clients in a target subset accept while the union of the cells served to that subset remains below the reconstruction threshold.
 
-- **Binding or consistency:** The commitment must bind all accepted openings to a single encoded object. Two different transcripts accepted under the same commitment should not correspond to incompatible data.
+- **Repairability:** Accepted openings should be directly usable as repair material. Once sufficiently many accepted transcripts have been collected, the public reconstruction algorithm should recover the data from those transcripts themselves.
 
-- **Repairability:** Accepted openings should be useful as reconstruction material. This property is operational rather than only game-based: the objects sampled by verifiers should be the same objects consumed by the decoder.
+- **Local accessibility:** Users should be able to access and verify small local portions of the data without downloading the full payload. A local read should require only the relevant opened symbols or cells and their authentication information.
 
 ## 3. Solution Space
 
-- **Commitments for Arbitrary Codes:** The builder encodes the data using a chosen erasure code, commits to the encoded word, and proves or otherwise enforces that the committed word belongs to the code. Sampling opens authenticated positions of this encoded word. The construction is code-agnostic and can be instantiated with Reed-Solomon codes or other erasure codes.
+- **Commitments for Arbitrary Codes:** The builder encodes the data using a chosen erasure code, commits to the encoded word, and proves or otherwise enforces that the committed word belongs to the code. Sampling opens authenticated positions of this encoded word. The construction is code-agnostic and can be instantiated with Reed-Solomon codes or other erasure codes. Its workflow separates the code choice from the commitment layer, which makes it a flexible framework for different erasure-code families.
 
-- **Commitments for Tensor Codes:** The data is arranged in a multidimensional tensor-code structure. Commitments and checks are organized along the tensor dimensions, so local consistency checks across rows, columns, or higher-dimensional slices imply global structure. This approach uses the algebraic structure of product codes to organize sampling and commitment verification.
+- **Commitments for Tensor Codes:** The data is arranged in a multidimensional tensor-code structure. Commitments and checks are organized along the tensor dimensions, so local consistency checks across rows, columns, or higher-dimensional slices imply global structure. A sampler typically receives rows, columns, or low-dimensional views and checks that they are mutually consistent. This approach uses the algebraic structure of product codes to organize sampling and commitment verification.
 
-- **Commitments for Interleaved Codes:** Several codewords are batched by interleaving their symbols, so that one sampled position can open aligned symbols from many codewords. This amortizes authentication and sampling over multiple blobs or rows. The high-level workflow is to encode many objects, interleave their coordinates, commit to the interleaved representation, and sample aligned positions.
+- **Commitments for Interleaved Codes:** Several codewords are batched by interleaving their symbols, so that one sampled position can open aligned symbols from many codewords. This amortizes authentication and sampling over multiple blobs or rows. The high-level workflow is to encode many objects, interleave their coordinates, commit to the interleaved representation, and sample aligned positions. Interleaving is especially natural when the system wants one query to test many codewords at once.
 
-- **FRIDA:** FRIDA follows a transparent, FRI-style approach to data availability. The builder commits to encoded data using hash-based structures and provides proximity-proof material showing that the committed object is close to a valid low-degree or codeword representation. Verifiers combine random samples with transparent proof checks rather than relying on pairing-based polynomial commitments.
+- **FRIDA:** FRIDA follows a transparent, FRI-style approach to data availability. The builder commits to encoded data using hash-based structures and provides proximity-proof material showing that the committed object is close to a valid low-degree or codeword representation. Verifiers combine random samples with transparent proof checks rather than relying on pairing-based polynomial commitments. The construction is designed to avoid trusted setup while using FRI-like proximity testing as the main correctness mechanism.
 
-- **ZODA:** ZODA is a post-quantum DAS construction based on hash-based commitments and transparent proof techniques. At a high level, it encodes data, commits to the encoded representation, and provides proof material that sampled positions are consistent with an available codeword. Its workflow is designed to avoid trusted setup and pairing assumptions.
+- **ZODA:** ZODA, or zero-overhead data availability, is built around tensor codes with a modified encoding procedure. It derives randomness from a partially encoded matrix before completing the tensor encoding, so sampled rows and columns of the modified encoding serve both as data samples and as proofs of their own correctness. Samplers uniformly sample rows and columns and perform consistency checks, while the protocol aims to add essentially no communication beyond the sampled encoding data and its Merkle openings. The construction requires no trusted setup and is plausibly post-quantum because it is based on hash commitments and code-structure checks rather than pairings.
 
-## 4. Repairability and Encode + Prove
+## 4. Repairability and Commitments for Arbitrary Codes
 
-Repairability is the property that accepted DAS openings can later be used to reconstruct the original payload. This matters because a DA system is not only trying to convince validators to vote on a block; it is also trying to ensure that the data needed by users, provers, and archival participants can be recovered after acceptance. A protocol that detects withholding but does not produce useful repair material leaves a practical gap between availability voting and actual data recovery.
+Repairability is the operational requirement that accepted DAS openings can later be used to reconstruct the original payload. This is stronger than saying that a verifier accepted a commitment: it says that the accepted material accumulated by the network is already the material needed by a decoder. In blockchain settings this distinction matters because data may need to be recovered after block acceptance by users, provers, archival nodes, or fraud-proof systems.
 
-The Commitments-for-Arbitrary-Codes approach gives the cleanest repairability interface. The proof binds the committed object to a valid erasure-codeword, and the opening protocol reveals authenticated pieces of that same codeword. Once enough distinct accepted cells are collected, reconstruction can run the ordinary erasure decoder on those cells.
+Commitments for Arbitrary Codes give a direct way to obtain this property. The builder first encodes the data into an erasure-codeword and then commits to that encoded object. The validity proof binds the committed object to the code, while the opening protocol reveals authenticated pieces of the same object. Therefore, once enough distinct accepted cells are collected, reconstruction can run the corresponding erasure decoder on exactly those cells.
 
-This is why the project focuses on an Encode + Prove methodology. The builder first encodes the data, then proves that the committed encoded object satisfies the required code membership and commitment relations. If the commitment layer is hash-based and the proof system is transparent and hash/symmetric-based, the resulting DAS construction is post-quantum while retaining the practical repair path from samples to decoding.
+This is the reason this project focuses on Commitments for Arbitrary Codes. If the commitment layer is hash-based and the proof system is transparent and hash/symmetric-based, then the construction can be post-quantum. At the same time, because the opened objects are authenticated codeword cells, the construction retains the repair path from sampling transcripts to decoded data.
 
 ## 5. Concrete Construction
 
-- **Payload representation:** The implementation treats each blob row as extension-field symbols. This reduces the number of codeword positions compared with a base-field-only payload while remaining compatible with LeanVM extension-field arithmetic.
+- **The Setup algorithm $\mathsf{Setup}(1^{\lambda}) \rightarrow {\sf pp}$:**
+    1. Choose a hash function $\mathsf{H}: \{0, 1\}^* \rightarrow \{0, 1\}^{\lambda}$ with domain-separated cell, chain, and Merkle tree calls.
+    2. Define the Reed-Solomon code ${\sf RS}[\mathbb{F}, {\sf U}, \rho]$ and its encoding algorithm $\mathcal{C}: \mathbb{F}^k \rightarrow \mathbb{F}^m$, where $\mathbb{F}$ is a finite field, ${\sf U}$ is the evaluation domain, $\rho$ is the code rate, $k$ is the input length, and $m=|{\sf U}|$ satisfies $k=\rho m$.
+    3. Define the number of field elements $c$ in a cell.
+    4. Define the reconstruction threshold $t=\left\lceil k/c\right\rceil$ in cells.
+    5. Define the public LeanVM parameters $\mathsf{pp}_{\sf STARK}$.
+    6. Output $\mathsf{pp}=(\mathsf{H},\mathbb{F},{\sf U},m,k,\rho,c,t,\mathsf{pp}_{\sf STARK})$.
 
-- **RS encoding:** Each row is Reed-Solomon encoded from $k$ payload symbols to $m=2k$ codeword symbols. The encoded matrix has $n$ rows, one per blob, and $m$ symbols per row.
+- **The encoding algorithm $\mathsf{Com}({\sf pp},{\sf data})\rightarrow({\sf com},{\sf \tau})$:**
+    1. Parse ${\sf data}$ into blobs ${\sf data}=(b_1,\ldots,b_n)$, where each blob has $k$ symbols.
+    2. RS encode each blob into a codeword with $m$ symbols: for every $i\in[1,n]$, $\mathcal{C}(b_i)=w_i=(w_{i,1},\ldots,w_{i,m})\in\mathbb{F}^m$. The first $k$ symbols are systematic, i.e. for every $s\in[1,k]$, $w_{i,s}=b_{i,s}$.
+    3. Form a matrix whose $i$-th row is $w_i$. Group every $c$ consecutive field elements as a cell, so each row has $\ell=m/c$ cells. Let $W_{i,j}=(w_{i,(j-1)c+1},\ldots,w_{i,jc})\in\mathbb{F}^c$ denote the $j$-th cell in row $i$.
+    4. Hash every cell into a cell digest: for every $i\in[1,n]$ and $j\in[1,\ell]$, set $e_{i,j}=\mathsf{H}(W_{i,j})$.
+    5. Hash-chain the systematic cell digests on each row: for every $i\in[1,n]$, set $r_i=\mathsf{H}(e_{i,1},\ldots,e_{i,t})$.
+    6. Merkle-aggregate the row hashes: $\mathsf{root}_{\sf row}=\mathsf{Merkle.Com}(r_1,\ldots,r_n)$.
+    7. For every column of cell digests, compute a column root: for every $j\in[1,\ell]$, set $C_j=\mathsf{Merkle.Com}(e_{1,j},\ldots,e_{n,j})$.
+    8. Merkle-aggregate all column roots: ${\sf root}_{\sf col}=\mathsf{Merkle.Com}(C_1,\ldots,C_{\ell})$.
+    9. Aggregate the row and column roots: $\mathsf{root}=\mathsf{H}({\sf root}_{\sf row},{\sf root}_{\sf col})$.
+    10. Compute the public RS check vector $L$ outside the proof from the public parameters and $\mathsf{root}$ as described below.
+    11. Generate a LeanVM STARK proof $\pi\leftarrow{\sf LeanVM}.{\sf Prove}({\sf pp}_{\sf STARK},{\sf stmt},{\sf witn},\mathcal{R})$, where
+    $$
+    \begin{aligned}
+    \mathcal{R}=\{({\sf stmt},{\sf witn}) :\;&
+    {\sf stmt}=(\{r_i\}_{i\in[1,n]},L,{\sf root}_{\sf col}),\quad {\sf witn}=\{w_i\}_{i\in[1,n]},\\
+    &\forall i\in[1,n],j\in[1,\ell],\; e_{i,j}=\mathsf{H}(W_{i,j}),\\
+    &\forall i\in[1,n],\; r_i=\mathsf{H}(e_{i,1},\ldots,e_{i,t}),\\
+    &\mathsf{root}_{\sf row}=\mathsf{Merkle.Com}(r_1,\ldots,r_n),\\
+    &\forall j\in[1,\ell],\; C_j=\mathsf{Merkle.Com}(e_{1,j},\ldots,e_{n,j}),\\
+    &{\sf root}_{\sf col}=\mathsf{Merkle.Com}(C_1,\ldots,C_{\ell}),\\
+    &\forall i\in[1,n],\; \langle L,w_i\rangle=0\},\\
+    &\mathsf{root}=\mathsf{H}({\sf root}_{\sf row},{\sf root}_{\sf col}).
+    \end{aligned}
+    $$
+    12. Open the outer Merkle authentication paths for all column roots: $\{{\sf auth}_j\}_{j\in[1,\ell]}={\sf Merkle.Open}(C_1,\ldots,C_{\ell},{\sf root})$.
+    13. Output ${\sf com}=({\sf root},\pi)$ and ${\sf \tau}=(\{w_i\}_{i\in[1,n]},\{{\sf auth}_j\}_{j\in[1,\ell]})$.
 
-- **Cell decomposition:** Every encoded row is partitioned into $\ell=m/c$ cells, each containing $c$ consecutive extension-field symbols. This produces an $n\times\ell$ cell matrix.
+- **The query algorithm ${\sf V}^{\pi,Q}_1({\sf com})\rightarrow{\sf tran}$:**
+    1. Generate the query index set $Q\leftarrow{\sf Sample}(1^{\lambda})$.
+    2. Set ${\sf tran}=(Q,\{W_{1,j},\ldots,W_{n,j},{\sf auth}_j\}_{j\in Q})$.
 
-- **Cell digest layer:** The proof hashes every cell into a digest. This digest matrix is the shared commitment interface used by both the systematic row commitment and the column-sampling commitment.
+- **The verification algorithm ${\sf V}_2({\sf com},{\sf tran})\rightarrow b$:**
+    1. Recompute $L$ from the same public computations as the prover.
+    2. Verify the STARK proof by checking ${\sf LeanVM}.{\sf Verify}({\sf pp}_{\sf STARK},{\sf stmt},\pi)=1$.
+    3. Verify the openings: compute $e_{i,j}=\mathsf{H}(W_{i,j})$ for every $i\in[1,n]$ and $j\in Q$, compute $C_j=\mathsf{Merkle.Com}(e_{1,j},\ldots,e_{n,j})$ for every $j\in Q$, and check ${\sf Merkle}.{\sf Verify}({\sf root},\{C_j,{\sf auth}_j\}_{j\in Q})=1$.
+    4. If all checks pass, output $b=1$; otherwise output $0$.
 
-- **Systematic row commitment:** For each row, the systematic cell digests are hashed into a row digest. The row digests are Merkle-aggregated into a row root, which binds the payload-facing systematic view.
+- **The reconstruction algorithm ${\sf Ext}({\sf com},{\sf tran}_1,\ldots,{\sf tran}_z)\rightarrow{\sf data}/\bot$:**
+    1. For every $a\in[1,z]$, parse ${\sf tran}_a=(Q_a,\{W_{1,j},\ldots,W_{n,j},{\sf auth}_j\}_{j\in Q_a})$.
+    2. Check that ${\sf V}_2({\sf com},{\sf tran}_a)=1$ for all $a\in[1,z]$; otherwise return $\bot$.
+    3. Let $I=Q_1\cup Q_2\cup\cdots\cup Q_z$ be the union of query index sets.
+    4. Check $|I|\geq t$; if not, return $\bot$.
+    5. Reconstruct the data from the codeword symbols contained in the cells indexed by $I$: ${\sf data}={\sf Reconst}(\{W_{1,j},\ldots,W_{n,j}\}_{j\in I})$.
 
-- **Column commitment:** For each cell column, an inner Merkle tree commits to the digests in that column and outputs one column root. The column roots are then Merkle-aggregated into a column root used for sampling.
-
-- **Final commitment:** The public commitment is a hash of the row root and the column root. This binds the systematic view and sampling view to the same cell digest matrix.
-
-- **Proof relation:** The LeanVM proof uses the encoded matrix as witness and proves cell digest computation, systematic row commitment, row-root aggregation, inner column Merkle trees, outer column Merkle aggregation, final-root binding, and Reed-Solomon membership for every row.
-
-- **Fiat-Shamir and membership:** The public check vector $L$ is derived outside the proof from public parameters and the public root. The verifier recomputes $L$ independently, while the proof checks only the inner products $\langle w_i,L\rangle=0$ for all rows.
-
-- **Opening and reconstruction:** A sampled opening reveals codeword cells and authentication data for the selected columns. After enough accepted columns are collected, reconstruction uses FFT-based arbitrary-erasure Reed-Solomon decoding to recover the original payload.
+- **RS membership check used in the demo:** The current demo uses the special barycentric check for rate $\rho=1/2$.
+    1. Let ${\sf U}=\{\omega^0,\omega^1,\ldots,\omega^{m-1}\}$, where $\omega$ is a primitive $m$-th root of unity, and assume $m=2k=2h$.
+    2. Define $x_r=(\omega^2)^r$ for $r\in[0,h-1]$.
+    3. For each row $w_i$, define $A_i(x_r)=w_{i,2r}$ and $B_i(x_r)=w_{i,2r+1}$.
+    4. Sample $p\leftarrow\mathsf{H}({\sf pp},{\sf root})$ and set $q=p/\omega$.
+    5. Define $\ell_r(z)=\frac{z^h-1}{h}\cdot\frac{x_r}{z-x_r}$.
+    6. Compute the shared barycentric-check vector $L=(L_0,\ldots,L_{m-1})$, where $L_{2r}=\ell_r(p)$ and $L_{2r+1}=-\ell_r(q)$.
+    7. Inside the proof, check for every $i\in[1,n]$ that
+    $$
+    \begin{aligned}
+    \langle L,w_i\rangle
+    &=\sum_{j=0}^{m-1}L_jw_{i,j}
+      =\sum_{r=0}^{h-1}\ell_r(p)w_{i,2r}-\sum_{r=0}^{h-1}\ell_r(q)w_{i,2r+1}\\
+    &=A_i(p)-B_i(q)=A_i(p)-B_i(p/\omega)=0.
+    \end{aligned}
+    $$
 
 ## 6. Input Parameters
 
@@ -252,9 +302,9 @@ Here $D_{\mathrm{payload}}$ is the useful blob payload size, i.e. number of blob
 
 ## 16. Summary
 
-- **Main outcome:** A repairable post-quantum Encode + Prove DAS construction can be implemented with hash-based commitments and LeanVM proofs at roughly $0.9$ MiB/s across the strongest measured repairable profiles, with single-profile runs occasionally reaching about $1$ MiB/s.
+- **Main outcome:** A repairable post-quantum Commitments-for-Arbitrary-Codes DAS construction can be implemented with hash-based commitments and LeanVM proofs at roughly $0.9$ MiB/s across the strongest measured repairable profiles, with single-profile runs occasionally reaching about $1$ MiB/s.
 
-- **Most important design choice:** The construction keeps sampled cells useful for reconstruction. This is the practical advantage of the arbitrary-code Encode + Prove route over approaches optimized only for sampling or proximity testing.
+- **Most important design choice:** The construction keeps sampled cells useful for reconstruction. This is the practical advantage of the Commitments-for-Arbitrary-Codes route over approaches optimized only for sampling or proximity testing.
 
 - **Parameter lessons:** Cell size $c=32$ is the strongest current point for the 2x profile, $c=32$ and $c=64$ are both competitive for the 4x profile, and row counts around $n=12$ to $n=14$ avoid the large proving-time cliffs seen at exact larger powers of two.
 
