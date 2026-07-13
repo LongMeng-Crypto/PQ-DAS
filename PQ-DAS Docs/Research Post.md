@@ -157,6 +157,48 @@ This is the reason this project focuses on Commitments for Arbitrary Codes. If t
 | WHIR log inverse rate | LeanVM/WHIR proof-system rate parameter used by the execution proof. |
 | Upload/download bandwidth | Network bandwidth used in the full DAS throughput model; this report uses $50$ Mbps in each direction. |
 
+
+### Subset Soundness With Replacement
+
+The benchmark profiles use the with-replacement subset-soundness bound from the DAS security-definition style of Hall-Andersen, Simkin, and Wagner. Let $N_{\sf clients}$ be the total number of client transcripts, let $\epsilon$ be the fraction of clients targeted by the adversary, and let $L_{\sf sub}=\lceil \epsilon N_{\sf clients}\rceil$ be the selected accepting subset size. Let $\Delta=t-1$ be the largest number of served cell columns that is still below the reconstruction threshold, and let $\ell=m/c$ be the total number of cell columns.
+
+For sampling with replacement, one verifier who opens $q=|Q|$ columns lands entirely inside a fixed non-reconstructing set of size $\Delta$ with probability $(\Delta/\ell)^q$. Union-bounding over the bad served set and over the adversarially selected accepting client subset gives
+
+$$
+\nu_{\sf sub}
+=
+\binom{\ell}{\Delta}
+\binom{N_{\sf clients}}{L_{\sf sub}}
+\left(\frac{\Delta}{\ell}\right)^{|Q|L_{\sf sub}}
+\le 2^{-\lambda}.
+$$
+
+Equivalently, the opened-cell count used by one verifier is the smallest integer satisfying
+
+$$
+|Q|_{\min}
+=
+\min\left\{q\in\mathbb{Z}_{\ge1}:
+\log_2\binom{\ell}{\Delta}
++\log_2\binom{N_{\sf clients}}{L_{\sf sub}}
++qL_{\sf sub}\log_2(\Delta/\ell)
+\le -\lambda
+\right\}.
+$$
+
+Since $\log_2(\Delta/\ell)<0$, this can also be written as the closed-form requirement
+
+$$
+|Q|
+\ge
+\left\lceil
+\frac{\lambda+\log_2\binom{\ell}{\Delta}+\log_2\binom{N_{\sf clients}}{L_{\sf sub}}}
+{L_{\sf sub}\log_2(\ell/\Delta)}
+\right\rceil.
+$$
+
+In the benchmark tables, `Opened cells` is this $|Q|_{\min}$ value for the corresponding profile. For example, with $N_{\sf clients}=10000$, $\epsilon=0.01$, $L_{\sf sub}=100$, $\lambda=40$, $\ell=1024$, and $t=512$ so that $\Delta=511$, the formula gives $|Q|_{\min}=19$ and $\log_2\nu_{\sf sub}\approx -83.398$.
+
 ## 7. Benchmark Metrics
 
 | Metric | Meaning |
