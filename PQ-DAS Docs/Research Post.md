@@ -11,13 +11,13 @@ Data availability sampling is the mechanism that allows a distributed system to 
 
 This problem is especially important for blockchain data availability layers. Modern rollup and sharding designs rely on the assumption that transaction or blob data remains available after a block is accepted. If the data later disappears, users may be unable to reconstruct state transitions, generate fraud proofs, or independently validate the system history. DAS is therefore not merely a compression technique for validators; it is a way to turn local randomized checks into a global availability guarantee.
 
-The post-quantum setting changes the design constraints. Many highly efficient DAS proposals use polynomial commitments such as KZG, whose security relies on algebraic assumptions that are not post-quantum. A post-quantum DAS construction should instead rely on hash-based commitments and transparent proof systems, while still preserving the operational properties that make DAS useful in practice: small samples, efficient verification, and the ability to recover data once enough openings have been collected.
+The post-quantum setting changes the design constraints. Highly efficient DAS proposals use polynomial commitments such as KZG, whose security relies on algebraic assumptions that are not post-quantum. A post-quantum DAS construction should instead rely on Post-quantum primitives, while still preserving the operational properties that make DAS useful in practice: small samples, efficient verification, and the ability to recover data once enough openings have been collected.
 
-The purpose of this project is to evaluate whether a repairable post-quantum DAS construction can be made practical inside LeanVM. The main engineering question is not only whether the construction is asymptotically possible, but whether concrete parameters, proof sizes, sampling sizes, and prover throughput are compatible with realistic blob workloads. The implementation branch for the experiments in this report is [LongMeng-Crypto/PQ-DAS `V2/V3-Demo`](https://github.com/LongMeng-Crypto/PQ-DAS/tree/V2%2FV3-Demo).
+The purpose of this project is to evaluate whether a repairable post-quantum DAS construction can be made practical. The main engineering question is not only whether the construction is asymptotically possible, but whether concrete parameters, proof sizes, sampling sizes, and prover throughput are compatible with realistic blob workloads. The implementation branch for the experiments in this report is [LongMeng-Crypto/PQ-DAS `V2/V3-Demo`](https://github.com/LongMeng-Crypto/PQ-DAS/tree/V2%2FV3-Demo).
 
 ## 2. Introduction to DAS
 
-A DAS protocol consists of a data producer, a set of sampling verifiers, and a reconstruction procedure. The data producer commits to an encoded representation of the data and provides proof material; verifiers sample a small subset of positions; and any party that obtains enough accepted openings can reconstruct the original data.
+A DAS protocol consists of a data builder or prover, a set of sampling verifiers, and a reconstruction procedure. The data producer commits to an encoded representation of the data and provides proof material; verifiers sample a small subset of positions; and any party that obtains enough accepted openings can reconstruct the original data.
 
 - **Parties:** The builder or prover receives the payload data and produces the commitment, auxiliary opening state, and proof. Validators or light clients sample the commitment and verify openings. A retriever or reconstruction party collects enough accepted transcripts and runs decoding to recover the data.
 
@@ -29,7 +29,7 @@ A DAS protocol consists of a data producer, a set of sampling verifiers, and a r
 
 - **Opening algorithm $\mathsf{Open}({\sf pp},{\sf aux},Q)\rightarrow {\sf tran}$:** On input the auxiliary opening state and query set, the builder returns a transcript containing the requested symbols or cells and their authentication data. The transcript should be small compared with the full encoded data.
 
-- **Verification algorithm $\mathsf{Verify}({\sf pp},{\sf com},Q,{\sf tran})\rightarrow\{0,1\}$:** On input the commitment, query set, and transcript, the verifier checks the proof and the sampled openings. The output is $1$ if the transcript is accepted and $0$ otherwise.
+- **Verification algorithm $\mathsf{Verify}({\sf pp},{\sf com},Q,{\sf tran})\rightarrow\{0 &/ 1\}$:** On input the commitment, query set, and transcript, the verifier checks the proof and the sampled openings. The output is $1$ if the transcript is accepted and $0$ otherwise.
 
 - **Reconstruction algorithm $\mathsf{Ext}({\sf pp},{\sf com},{\sf tran}_1,\ldots,{\sf tran}_z)\rightarrow {\sf data}/\bot$:** On input multiple accepted transcripts, the reconstruction algorithm verifies the openings, extracts their encoded symbols, and attempts to decode the original data. It outputs the recovered data or $\bot$ if the transcripts do not contain enough valid information.
 
@@ -37,7 +37,7 @@ The security requirements can be stated at a high level as follows.
 
 - **Correctness:** If the builder is honest and the data is encoded correctly, then honestly generated openings verify and reconstruction recovers the original data once enough openings are available.
 
-- **Availability soundness:** If a verifier accepts with sufficiently high probability, then the committed object should contain enough information for the data to be recovered. Informally, an adversary should not be able to make many verifiers accept while withholding too many encoded positions.
+- **Soundness:** If a verifier accepts with sufficiently high probability, then the committed object should contain enough information for the data to be recovered. Informally, an adversary should not be able to make many verifiers accept while withholding too many encoded positions.
 
 - **Extractability:** An accepting commitment should correspond to extractable data. This rules out commitments that pass sampling checks but do not determine a recoverable payload.
 
