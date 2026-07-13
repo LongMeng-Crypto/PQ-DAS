@@ -7,13 +7,7 @@ table td:nth-child(1) { white-space: nowrap; }
 
 ## 1. Motivation
 
-Data availability sampling is the mechanism that allows a distributed system to accept large data objects without requiring every validator to download them in full. Instead of checking the whole payload, validators check a small number of authenticated samples from an erasure-coded representation. If the sampling protocol is sound, then a producer who withholds too much data is detected with high probability, while honest data can still be accepted with small bandwidth and verification cost.
-
-This problem is especially important for blockchain data availability layers. Modern rollup and sharding designs rely on the assumption that transaction or blob data remains available after a block is accepted. If the data later disappears, users may be unable to reconstruct state transitions, generate fraud proofs, or independently validate the system history. DAS is therefore not merely a compression technique for validators; it is a way to turn local randomized checks into a global availability guarantee.
-
-The post-quantum setting changes the design constraints. Highly efficient DAS proposals use polynomial commitments such as KZG, whose security relies on algebraic assumptions that are not post-quantum. A Post-Quantum (PQ) DAS construction should instead rely on post-quantum primitives, while still preserving the operational properties that make DAS useful in practice: small samples, efficient verification, and the ability to recover data once enough openings have been collected.
-
-The purpose of this project is to evaluate whether a post-quantum DAS construction can be made practical. The main engineering question is not only whether the construction is asymptotically possible, but whether concrete parameters, proof sizes, sampling sizes, and prover throughput are compatible with realistic blob workloads. The implementation branch for the experiments in this report is [LongMeng-Crypto/PQ-DAS `V2/V3-Demo`](https://github.com/LongMeng-Crypto/PQ-DAS/tree/V2%2FV3-Demo).
+Ethereum already uses data availability sampling (DAS) to let validators check large blob data by sampling a small number of authenticated positions from an erasure-coded object, rather than downloading the whole payload. As Ethereum moves toward post-quantum security, DAS constructions that rely on algebraic polynomial commitments such as KZG need hash-based, post-quantum alternatives. This post evaluates one repairable post-quantum DAS route: a Commitments-for-Arbitrary-Codes construction instantiated with Reed-Solomon encoding, hash commitments, and LeanVM proofs, with benchmarks for concrete blob-sized parameters. The implementation branch for the experiments is [LongMeng-Crypto/PQ-DAS `V2/V3-Demo`](https://github.com/LongMeng-Crypto/PQ-DAS/tree/V2%2FV3-Demo).
 
 ## 2. Introduction to DAS
 
