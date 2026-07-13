@@ -13,53 +13,31 @@ This problem is especially important for blockchain data availability layers. Mo
 
 The post-quantum setting changes the design constraints. Highly efficient DAS proposals use polynomial commitments such as KZG, whose security relies on algebraic assumptions that are not post-quantum. A Post-Quantum (PQ) DAS construction should instead rely on post-quantum primitives, while still preserving the operational properties that make DAS useful in practice: small samples, efficient verification, and the ability to recover data once enough openings have been collected.
 
-The purpose of this project is to evaluate whether a repairable post-quantum DAS construction can be made practical. The main engineering question is not only whether the construction is asymptotically possible, but whether concrete parameters, proof sizes, sampling sizes, and prover throughput are compatible with realistic blob workloads. The implementation branch for the experiments in this report is [LongMeng-Crypto/PQ-DAS `V2/V3-Demo`](https://github.com/LongMeng-Crypto/PQ-DAS/tree/V2%2FV3-Demo).
+The purpose of this project is to evaluate whether a post-quantum DAS construction can be made practical. The main engineering question is not only whether the construction is asymptotically possible, but whether concrete parameters, proof sizes, sampling sizes, and prover throughput are compatible with realistic blob workloads. The implementation branch for the experiments in this report is [LongMeng-Crypto/PQ-DAS `V2/V3-Demo`](https://github.com/LongMeng-Crypto/PQ-DAS/tree/V2%2FV3-Demo).
 
 ## 2. Introduction to DAS
 
-A DAS protocol consists of a data builder or prover, a set of sampling verifiers, and a reconstruction procedure. The builder receives the payload data and produces the commitment, auxiliary opening state, and proof. Verifiers sample the commitment and verify openings. The reconstruction party collects enough accepted transcripts and runs decoding to recover the data.
+A DAS protocol consists of a data builder or prover, a set of verifiers, and a reconstruction party. The builder receives the payload data and produces the commitment and proof. Verifiers sample the commitment and verify the openings and the proof. The reconstruction party collects enough accepted transcripts and recovers the data. The syntax of a DAS protocol can be described as follows:
 
-- **Parties:** The builder/prover holds the payload and answers openings; verifiers or light clients sample the commitment and verify transcripts; a reconstruction party aggregates accepted transcripts and runs decoding.
+- **$\mathsf{Setup}(1^\lambda)\rightarrow {\sf pp}$:** The setup algorithm takes input a security parameter $\lambda$, it outputs public parameters of the DAS protocol. 
 
-- **Setup algorithm $\mathsf{Setup}(1^\lambda)\rightarrow {\sf pp}$:** On input a security parameter, setup outputs public parameters. These include the erasure code, evaluation domain, cell size, sampling rules, hash function, proof-system parameters, and reconstruction threshold.
+- **$\mathsf{Com}({\sf pp},{\sf data})\rightarrow({\sf com}, \mathsf{aux})$:** The encoding algorithm takes input the public parameter $\mathsf{pp}$ and the data to be encoded, it outputs a commitment $\mathsf{com}$ and some auxiliary data $\mathsf{aux}$.
 
-- **Commitment algorithm $\mathsf{Com}({\sf pp},{\sf data})\rightarrow({\sf com},{\sf aux})$:** On input public parameters and data, the builder encodes the data, computes a commitment, and produces auxiliary state for answering future openings. The output commitment ${\sf com}$ is public, while ${\sf aux}$ contains the encoded data, Merkle paths, or other opening state.
+- **${\sf V}^{\pi,Q}_1({\sf com})\rightarrow{\sf tran}$:** The query algorithm takes input a commitment $\mathsf{com}$, it outputs  a verifier query set $Q$. 
 
-- **Query algorithm $\mathsf{Query}({\sf pp},{\sf com};r)\rightarrow Q$:** On input the public parameters, the commitment, and verifier randomness, the verifier samples a query set $Q$. In a cell-based DAS protocol, $Q$ is a set of cell-column indices.
+- **${\sf V}_2({\sf com},{\sf tran})\rightarrow b$:** The verification algorithm takes input a commitment $\mathsf{com}$ and a transcript, it outputs a bit 1 if the verification is passed, otherwise outputs 0.
 
-- **Opening algorithm $\mathsf{Open}({\sf pp},{\sf aux},Q)\rightarrow {\sf tran}$:** On input the auxiliary opening state and query set, the builder returns a transcript containing the requested symbols or cells and their authentication data. The transcript should be small compared with the full encoded data.
+- **${\sf Ext}({\sf com},{\sf tran}_1,\ldots,{\sf tran}_z)\rightarrow{\sf data}/\bot$:** The reconstruction algorithm takes input a commitment $\mathsf{com}$ and a set of transcripts ${\sf tran}_1,\ldots,{\sf tran}_z$, it outputs the reconstructed data $\mathsf{data}$ or a rejection symbol $\bot$.
 
-- **Verification algorithm $\mathsf{Verify}({\sf pp},{\sf com},Q,{\sf tran})\rightarrow\{0,1\}$:** On input the commitment, query set, and transcript, the verifier checks the proof and the sampled openings. The output is $1$ if the transcript is accepted and $0$ otherwise.
+Informally, a DAS scheme should satisfy completeness, soundness, consistency, subset soundness, repairability, and local accessibility. Completeness means that honestly generated commitments, proofs, openings, and reconstruction transcripts are accepted and recover the original data. Soundness means that an adversary cannot make verifiers accept a commitment to data that is not available for reconstruction. Consistency means that one commitment cannot lead different honest reconstruction procedures to two different payloads. Subset soundness strengthens sampling soundness by requiring that even a specified subset of accepting clients collectively samples enough information to make reconstruction possible except with small probability. Repairability means that accepted samples are not merely detection evidence, but can be used by the reconstruction algorithm to repair and recover missing data. Local accessibility means that a user can check and retrieve a small local part of the committed data with local openings and authentication information, without downloading the whole encoded object. The formal definitions are given in the DAS foundations paper: https://eprint.iacr.org/2023/1079.pdf.
 
-- **Reconstruction algorithm $\mathsf{Ext}({\sf pp},{\sf com},{\sf tran}_1,\ldots,{\sf tran}_z)\rightarrow {\sf data}/\bot$:** On input multiple accepted transcripts, the reconstruction algorithm verifies the openings, extracts their encoded symbols, and attempts to decode the original data. It outputs the recovered data or $\bot$ if the transcripts do not contain enough valid information.
+## 3. The benchmarked class of schemes
 
-Following the security terminology of Hall-Andersen, Simkin, and Wagner, a DAS construction should satisfy the following properties at a conceptual level.
+The benchmarked class in this report is **Commitments for Arbitrary Codes** from the solution space of the [DAS foundations paper](https://eprint.iacr.org/2023/1079.pdf). In this class, the builder encodes the data with a chosen erasure code, commits to the encoded word, and proves that the committed object is a valid codeword. Sampling opens authenticated positions of that encoded word, while reconstruction uses accepted samples as erasure-code evaluations. This is the class we benchmark because it lets us combine Reed-Solomon rows, hash-based commitments, transparent LeanVM proofs, and cell-level reconstruction in one repairable pipeline.
 
-- **Completeness:** For honestly generated public parameters, commitments, queries, and openings, the verifier accepts. If enough honest accepted transcripts are provided to reconstruction, the reconstruction algorithm outputs the original data.
+**Remark on other schemes.** The same solution space also includes commitments for tensor codes and commitments for interleaved codes from the [DAS foundations paper](https://eprint.iacr.org/2023/1079.pdf), as well as later systems such as FRIDA and [ZODA](https://angeris.github.io/papers/da-construction.pdf). Tensor-code schemes arrange data in a multidimensional code and check row/column or higher-dimensional consistency; interleaved-code schemes batch many codewords so one sampled coordinate opens aligned symbols across them; FRIDA uses transparent FRI-style proximity testing for availability; and ZODA uses a modified tensor-code encoding where sampled rows and columns serve as both data and proof material. These are important alternatives, but they are not the benchmark target here: the experiments below focus on the repairable arbitrary-code commitment route, where accepted samples are directly aligned with Reed-Solomon reconstruction.
 
-- **Soundness:** If a malicious builder makes verifiers accept with non-negligible probability, then the accepted transcripts must contain enough information to determine recoverable data. Equivalently, the adversary should not be able to make the network accept a commitment while withholding too much of the encoded object.
-
-- **Consistency:** A fixed commitment should not admit two different valid explanations. Any two sufficiently large sets of accepting transcripts for the same commitment must reconstruct to the same data.
-
-- **Subset soundness:** Soundness must hold even for a chosen subset of accepting clients. An adversary should not be able to make many clients in a target subset accept while the union of the cells served to that subset remains below the reconstruction threshold.
-
-- **Repairability:** Accepted openings should be directly usable as repair material. Once sufficiently many accepted transcripts have been collected, the public reconstruction algorithm should recover the data from those transcripts themselves.
-
-- **Local accessibility:** Users should be able to access and verify small local portions of the data without downloading the full payload. A local read should require only the relevant opened symbols or cells and their authentication information.
-
-## 3. Solution Space
-
-- **Commitments for Arbitrary Codes:** The builder encodes the data using a chosen erasure code, commits to the encoded word, and proves or otherwise enforces that the committed word belongs to the code. Sampling opens authenticated positions of this encoded word. The construction is code-agnostic and can be instantiated with Reed-Solomon codes or other erasure codes. Its workflow separates the code choice from the commitment layer, which makes it a flexible framework for different erasure-code families.
-
-- **Commitments for Tensor Codes:** The data is arranged in a multidimensional tensor-code structure. Commitments and checks are organized along the tensor dimensions, so local consistency checks across rows, columns, or higher-dimensional slices imply global structure. A sampler typically receives rows, columns, or low-dimensional views and checks that they are mutually consistent. This approach uses the algebraic structure of product codes to organize sampling and commitment verification.
-
-- **Commitments for Interleaved Codes:** Several codewords are batched by interleaving their symbols, so that one sampled position can open aligned symbols from many codewords. This amortizes authentication and sampling over multiple blobs or rows. The high-level workflow is to encode many objects, interleave their coordinates, commit to the interleaved representation, and sample aligned positions. Interleaving is especially natural when the system wants one query to test many codewords at once.
-
-- **FRIDA:** FRIDA follows a transparent, FRI-style approach to data availability. The builder commits to encoded data using hash-based structures and provides proximity-proof material showing that the committed object is close to a valid low-degree or codeword representation. Verifiers combine random samples with transparent proof checks rather than relying on pairing-based polynomial commitments. The construction is designed to avoid trusted setup while using FRI-like proximity testing as the main correctness mechanism.
-
-- **ZODA:** ZODA, or zero-overhead data availability, is built around tensor codes with a modified encoding procedure. It derives randomness from a partially encoded matrix before completing the tensor encoding, so sampled rows and columns of the modified encoding serve both as data samples and as proofs of their own correctness. Samplers uniformly sample rows and columns and perform consistency checks, while the protocol aims to add essentially no communication beyond the sampled encoding data and its Merkle openings. The construction requires no trusted setup and is plausibly post-quantum because it is based on hash commitments and code-structure checks rather than pairings.
-
-## 4. Repairability and Commitments for Arbitrary Codes
+## 4. Commitments for Arbitrary Codes: Choice for Repairability 
 
 Repairability is the operational requirement that accepted DAS openings can later be used to reconstruct the original payload. This is stronger than saying that a verifier accepted a commitment: it says that the accepted material accumulated by the network is already the material needed by a decoder. In blockchain settings this distinction matters because data may need to be recovered after block acceptance by users, provers, archival nodes, or fraud-proof systems.
 
@@ -67,7 +45,7 @@ Commitments for Arbitrary Codes give a direct way to obtain this property. The b
 
 This is the reason this project focuses on Commitments for Arbitrary Codes. If the commitment layer is hash-based and the proof system is transparent and hash/symmetric-based, then the construction can be post-quantum. At the same time, because the opened objects are authenticated codeword cells, the construction retains the repair path from sampling transcripts to decoded data.
 
-## 5. Concrete Construction
+## 5. Commitments for Arbitrary Codes: Concrete Construction
 
 - **The Setup algorithm $\mathsf{Setup}(1^{\lambda}) \rightarrow {\sf pp}$:**
     1. Choose a hash function $\mathsf{H}: \{0, 1\}^* \rightarrow \{0, 1\}^{\lambda}$ with domain-separated cell, chain, and Merkle tree calls.
@@ -164,27 +142,11 @@ The benchmark profiles use the with-replacement subset-soundness bound from the 
 
 For sampling with replacement, one verifier who opens $q=|Q|$ columns lands entirely inside a fixed non-reconstructing set of size $\Delta$ with probability $(\Delta/\ell)^q$. Union-bounding over the bad served set and over the adversarially selected accepting client subset gives
 
-$$
-\nu_{\sf sub}
-=
-\binom{\ell}{\Delta}
-\binom{N_{\sf clients}}{L_{\sf sub}}
-\left(\frac{\Delta}{\ell}\right)^{|Q|L_{\sf sub}}
-\le 2^{-\lambda}.
-$$
+$\nu_{\sf sub}=\binom{\ell}{\Delta}\binom{N_{\sf clients}}{L_{\sf sub}}\left(\frac{\Delta}{\ell}\right)^{|Q|L_{\sf sub}}\le 2^{-\lambda}.$
 
 Equivalently, the opened-cell count used by one verifier is the smallest integer satisfying
 
-$$
-|Q|_{\min}
-=
-\min\left\{q\in\mathbb{Z}_{\ge1}:
-\log_2\binom{\ell}{\Delta}
-+\log_2\binom{N_{\sf clients}}{L_{\sf sub}}
-+qL_{\sf sub}\log_2(\Delta/\ell)
-\le -\lambda
-\right\}.
-$$
+$|Q|_{\min}=\min\left\{q\in\mathbb{Z}_{\ge1}:\log_2\binom{\ell}{\Delta}+\log_2\binom{N_{\sf clients}}{L_{\sf sub}}+qL_{\sf sub}\log_2(\Delta/\ell)\le -\lambda\right\}.$
 
 Since $\log_2(\Delta/\ell)<0$, this can also be written as the closed-form requirement
 
@@ -346,8 +308,8 @@ Here $D_{\mathrm{payload}}$ is the useful blob payload size, i.e. number of blob
 
 - **Main outcome:** A repairable post-quantum Commitments-for-Arbitrary-Codes DAS construction can be implemented with hash-based commitments and LeanVM proofs at roughly $0.9$ MiB/s across the strongest measured repairable profiles, with single-profile runs occasionally reaching about $1$ MiB/s.
 
-- **Most important design choice:** The construction keeps sampled cells useful for reconstruction. This is the practical advantage of the Commitments-for-Arbitrary-Codes route over approaches optimized only for sampling or proximity testing.
+- **Design choice:** The construction keeps sampled cells useful for reconstruction. This is the practical advantage of the Commitments-for-Arbitrary-Codes route over approaches optimized only for sampling or proximity testing.
 
-- **Parameter lessons:** Cell size $c=32$ is the strongest current point for the 2x profile, $c=32$ and $c=64$ are both competitive for the 4x profile, and row counts around $n=12$ to $n=14$ avoid the large proving-time cliffs seen at exact larger powers of two.
+- **Parameter choice:** Cell size $c=32$ is the strongest current point for the 2x profile, $c=32$ and $c=64$ are both competitive for the 4x profile, and row counts around $n=12$ to $n=14$ avoid the large proving-time cliffs seen at exact larger powers of two.
 
 - **Main bottleneck:** The proof relation is still dominated by Poseidon calls for cell/row/column commitments and extension-field operations for RS membership. Reducing these costs inside LeanVM is the clearest path toward higher throughput.
