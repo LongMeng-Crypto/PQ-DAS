@@ -6,3 +6,10 @@ minimal_zkVM.synctex.gz
 misc/.build
 /external/*/target/
 *:sec.endpointdlp
+
+# Local PQ-DAS working notes and generated diagrams
+/PQ-DAS Docs/PQ-DAS Optimization Checklist.md
+/PQ-DAS Docs/LeanVM Implementation Plan.md
+/PQ-DAS Docs/V2 Design Diagram.png
+/PQ-DAS Docs/V3 Design Diagram.png
+/PQ-DAS Docs/V3 Design Diagram.svg
