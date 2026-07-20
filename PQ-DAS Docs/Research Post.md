@@ -7,7 +7,7 @@ table td:nth-child(1) { white-space: nowrap; }
 
 ## 1. Motivation
 
-Ethereum uses data availability sampling (DAS) to let validators check the availability of large blob data by sampling a small number of random positions from an erasure-coded object, rather than downloading the whole payload. As Ethereum moves toward post-quantum security, the current DAS protocol based on KZG polynomial commitment needs post-quantum alternatives. This post first shows an encode + prove type of PQ-DAS construction instantiated with Reed-Solomon code, hash commitments, and the LeanVM proof system, then shows the benchmark for various input parameters and output metrics. The code for the up-to-date implementation is at: [LongMeng-Crypto/PQ-DAS](https://github.com/LongMeng-Crypto/PQ-DAS/tree/V2%2FV3-Demo).
+Ethereum uses data availability sampling (DAS) to let validators check the availability of large blob data by sampling a small number of random positions from an erasure-coded object, rather than downloading the whole payload. As Ethereum moves toward post-quantum security, the current DAS protocol based on KZG polynomial commitment needs post-quantum alternatives. This post first shows an encode + prove type of PQ-DAS construction instantiated with Reed-Solomon code, hash commitments, and the LeanVM proof system, then shows the benchmark for various input parameters and output metrics. The code for the up-to-date implementation is at: [LongMeng-Crypto/PQ-DAS](https://github.com/LongMeng-Crypto/PQ-DAS/tree/V2%2FV3-Demo). A companion document containing the benchmark and security results is available in [Supplementary.md](Supplementary.md).
 
 ## 2. Encode + Prove DAS: Workflow
 
@@ -72,7 +72,7 @@ This section summarizes the input parameters of our benchmark. In our experiment
 | WHIR log inverse rate | LeanVM/WHIR proof-system rate parameter used by the execution proof. |
 | Upload/download bandwidth | Network bandwidth used in the full DAS throughput model; this report uses $50$ Mbps in each direction. |
 
-**Remarks.** The number of sampled cell columns opened by a verifier, denoted by $|Q|$, is decided by the desired subset-soundness level. The formula for deriving it is given in the [subset soundness formula](supplementary.md#subset-soundness-formula) section of the supplementary material. 
+**Remarks.** The number of sampled cell columns opened by a verifier, denoted by $|Q|$, is decided by the desired subset-soundness level. The formula for deriving it is given in the [subset soundness formula](Supplementary.md#subset-soundness-formula) section of the supplementary material. 
 
 ## 5. Benchmark Metrics
 The benchmark numbers in this report were measured on a local PC with an Intel Core i9-14900 CPU, 32 logical CPUs (16 cores with 2 threads per core), 32 GiB memory, a single NUMA node, 36 MiB L3 cache, and AVX2 support. The benchmark uses the local default Rayon thread pool on this machine.
@@ -144,21 +144,21 @@ $N_{\mathrm{clients}}$ is the number of verifier/client transcripts. In the benc
 
 ## 7. Benchmark Results
 
-The benchmark sweeps vary blob size, cell size, row count, and WHIR rate around the extension-field construction summarized above. The raw tables are collected in the [benchmark tables](supplementary.md#benchmark-tables) section of the supplementary material; the main takeaways are:
+The benchmark sweeps vary blob size, cell size, row count, and WHIR rate around the extension-field construction summarized above. The raw tables are collected in the [benchmark tables](Supplementary.md#benchmark-tables) section of the supplementary material; the main takeaways are:
 
-- **Blob-size sweep:** At fixed $\ell=1024$ and $n=14$, moving from 1x to 2x/4x payloads amortizes fixed proof overhead. The best Full DAS throughput in this sweep is `ext-b4-c64-r14-w1` at $623.21$ KiB/s, while 2x and 4x have almost identical LeanVM proving throughput around $0.9$ MiB/s ([Table 1](supplementary.md#table-1-blob-size-sweep)).
+- **Blob-size sweep:** At fixed $\ell=1024$ and $n=14$, moving from 1x to 2x/4x payloads amortizes fixed proof overhead. The best Full DAS throughput in this sweep is `ext-b4-c64-r14-w1` at $623.21$ KiB/s, while 2x and 4x have almost identical LeanVM proving throughput around $0.9$ MiB/s ([Table 1](Supplementary.md#table-1-blob-size-sweep)).
 
-- **2x cell-size sweep:** For $k=16384$, $m=32768$, and $n=14$, $c=32$ is the best measured point, with $846.33$ KiB/s LeanVM proving throughput and $578.60$ KiB/s Full DAS throughput. Larger cells reduce VM cycles but increase opening size and do not improve the full throughput in this run ([Table 2](supplementary.md#table-2-cell-size-sweep-at-2x-blob-size)).
+- **2x cell-size sweep:** For $k=16384$, $m=32768$, and $n=14$, $c=32$ is the best measured point, with $846.33$ KiB/s LeanVM proving throughput and $578.60$ KiB/s Full DAS throughput. Larger cells reduce VM cycles but increase opening size and do not improve the full throughput in this run ([Table 2](Supplementary.md#table-2-cell-size-sweep-at-2x-blob-size)).
 
-- **2x row-count sweep:** Increasing $n$ amortizes fixed overhead until padding cliffs appear. The best measured Full DAS throughput is at $n=14$ with $602.28$ KiB/s, while $n=16$ and $n=32$ show sharp proving-time cliffs ([Table 3](supplementary.md#table-3-row-count-sweep-at-2x-blob-size)).
+- **2x row-count sweep:** Increasing $n$ amortizes fixed overhead until padding cliffs appear. The best measured Full DAS throughput is at $n=14$ with $602.28$ KiB/s, while $n=16$ and $n=32$ show sharp proving-time cliffs ([Table 3](Supplementary.md#table-3-row-count-sweep-at-2x-blob-size)).
 
-- **4x cell-size sweep:** At 4x blob size, $c=32$ is the best measured point, with $882.29$ KiB/s LeanVM proving throughput and $609.71$ KiB/s Full DAS throughput. The $c=64$ point is close, but $c=16$ is much slower because it doubles the number of cells ([Table 4](supplementary.md#table-4-cell-size-sweep-at-4x-blob-size)).
+- **4x cell-size sweep:** At 4x blob size, $c=32$ is the best measured point, with $882.29$ KiB/s LeanVM proving throughput and $609.71$ KiB/s Full DAS throughput. The $c=64$ point is close, but $c=16$ is much slower because it doubles the number of cells ([Table 4](Supplementary.md#table-4-cell-size-sweep-at-4x-blob-size)).
 
-- **4x row-count sweep:** The best measured Full DAS throughput is at $n=6$ with $538.65$ KiB/s. Larger row counts do not monotonically improve throughput because proof-system padding costs dominate at several boundaries, especially $n=16$ ([Table 5](supplementary.md#table-5-row-count-sweep-at-4x-blob-size)).
+- **4x row-count sweep:** The best measured Full DAS throughput is at $n=6$ with $538.65$ KiB/s. Larger row counts do not monotonically improve throughput because proof-system padding costs dominate at several boundaries, especially $n=16$ ([Table 5](Supplementary.md#table-5-row-count-sweep-at-4x-blob-size)).
 
-- **WHIR-rate sweep:** WHIR log inverse rate $1$ is consistently faster than rate $2$ for both tested profiles. Rate $2$ reduces proof size but increases proving time enough to lower Full DAS throughput ([Table 6](supplementary.md#table-6-whir-rate-sweep)).
+- **WHIR-rate sweep:** WHIR log inverse rate $1$ is consistently faster than rate $2$ for both tested profiles. Rate $2$ reduces proof size but increases proving time enough to lower Full DAS throughput ([Table 6](Supplementary.md#table-6-whir-rate-sweep)).
 
-For the complete measured values, including proof size, sample size, VM cycles, Poseidon16 calls, ExtensionOp calls, and reconstruction time, see the [benchmark tables](supplementary.md#benchmark-tables) in the supplementary material.
+For the complete measured values, including proof size, sample size, VM cycles, Poseidon16 calls, ExtensionOp calls, and reconstruction time, see the [benchmark tables](Supplementary.md#benchmark-tables) in the supplementary material.
 
 ## Results Summary
 
