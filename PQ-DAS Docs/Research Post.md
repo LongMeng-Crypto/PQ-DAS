@@ -1,4 +1,4 @@
-# PQ-DAS Research Report
+# PQ-DAS constructed from LeanVM: Design and Benchmark 
 
 <style>
 table th, table td { white-space: nowrap; }
@@ -7,56 +7,55 @@ table td:nth-child(1) { white-space: nowrap; }
 
 ## 1. Motivation
 
-Ethereum uses data availability sampling (DAS) to let validators check large blob data by sampling a small number of authenticated positions from an erasure-coded object, rather than downloading the whole payload. As Ethereum moves toward post-quantum security, DAS constructions that rely on algebraic polynomial commitments such as KZG need hash-based, post-quantum alternatives. This post evaluates one post-quantum DAS route: a Commitments-for-Arbitrary-Codes construction instantiated with Reed-Solomon encoding, hash commitments, and LeanVM proofs, with benchmarks for concrete blob-sized parameters. The implementation branch for the experiments is [LongMeng-Crypto/PQ-DAS `V2/V3-Demo`](https://github.com/LongMeng-Crypto/PQ-DAS/tree/V2%2FV3-Demo).
+Ethereum uses data availability sampling (DAS) to let validators check the availability of large blob data by sampling a small number of random positions from an erasure-coded object, rather than downloading the whole payload. As Ethereum moves toward post-quantum security, the current DAS protocol based on KZG polynomial commitment needs post-quantum alternatives. This post first shows an encode + prove type of PQ-DAS construction instantiated with Reed-Solomon code, hash commitments, and the LeanVM proof system, then shows the benchmark for various input parameters and output metrics. The code for the up-to-date implementation is at: [LongMeng-Crypto/PQ-DAS](https://github.com/LongMeng-Crypto/PQ-DAS/tree/V2%2FV3-Demo).
 
-## 2. Introduction to DAS
+## 2. Encode + Prove DAS: Workflow
 
-A DAS protocol consists of a data builder or prover, a set of verifiers, and a reconstruction party. The builder receives the payload data and produces the commitment and proof. Verifiers sample the commitment and verify the openings and the proof. The reconstruction party collects enough accepted transcripts and recover the data. The syntax of a DAS protocol can be described as follows:
+In general, a DAS protocol consists of a set of users, a block builder, a set of verifiers. The benchmarked DAS protocol in this report is the **Encode + Prove** paradigm from the solution space of the [DAS foundations, Section 7](https://eprint.iacr.org/2023/1079.pdf). In this class, the builder encodes the data with an erasure code, commits to the codewords by using a vector commitment scheme, and proves that the committed object is a valid codeword by using a SNARK proof system. Sampling opens authenticated positions of the codeword symbols, while reconstruction uses accepted samples as erasure-code evaluations. 
 
-- **$\mathsf{Setup}(1^\lambda)\rightarrow {\sf pp}$:** The setup algorithm takes input a security parameter $\lambda$, it outputs public parameters of the DAS protocol. 
+Abstractly, the workflow of such a DAS protocol is as follows:
 
-- **$\mathsf{Com}({\sf pp},{\sf data})\rightarrow({\sf com}, \mathsf{aux})$:** The encoding algorithm takes input the public parameter $\mathsf{pp}$ and the data to be encoded, it outputs a commitment $\mathsf{com}$ and some auxiliary data $\mathsf{aux}$.
+- **Initialization**: All users send their data to the builder. 
+- **Commit**: The builder receives data from the users, first encodes them and commits to the codeword, then it generates a SNARK proof for proving that the data are encoded into the codewords, and the codewords are commited as the commitment. Finally, the builder uploads the commitment, the SNARK proof, and the codewords including commitment openings for all symbols.
+- **Download Commitment**: Each verifier downloads the full commitment and SNARK proof. Each verifier checks if the SNARK proof verifies with respect to the commitment. If not, they reject immediately.
+- **Sampling and Verification**: Each verifier samples a random set of indices, queries the network, and downloads the corresponding codeword symbols and their openings. Each verifier checks if the openings are valid against the commitment. If not, they reject. If they are all valid, they accept.
 
-- **${\sf V}^{\pi,Q}_1({\sf com})\rightarrow{\sf tran}$:** The query algorithm takes input a commitment $\mathsf{com}$, it outputs  a verifier query set $Q$. 
+Intuitively, if any party collects enough symbols that have been verified, the original data can be reconstructed and missing symbols can be reinserted into the network, to help other verifiers to eventually accept.
 
-- **${\sf V}_2({\sf com},{\sf tran})\rightarrow b$:** The verification algorithm takes input a commitment $\mathsf{com}$ and a transcript, it outputs a bit 1 if the verification is passed, otherwise outputs 0.
+Informally, a DAS scheme should satisfy the following security properties: completeness, soundness, consistency, subset soundness, and repairability. 
 
-- **${\sf Ext}({\sf com},{\sf tran}_1,\ldots,{\sf tran}_z)\rightarrow{\sf data}/\bot$:** The reconstruction algorithm takes input a commitment $\mathsf{com}$ and a set of transcripts ${\sf tran}_1,\ldots,{\sf tran}_z$, it outputs the reconstructed data $\mathsf{data}$ or a rejection symbol $\bot$.
+The formal definition of the DAS syntax and the security properties are defined in [DAS foundations](https://eprint.iacr.org/2023/1079.pdf).
 
-Informally, a DAS scheme should satisfy the following security properties: completeness, soundness, consistency, subset soundness, repairability, and local accessibility. The formal definition of these properties are defined at [DAS foundations](https://eprint.iacr.org/2023/1079.pdf).
 
-## 3. The benchmarked class of schemes
-The benchmarked class in this report is **Commitments for Arbitrary Codes** from the solution space of the [DAS foundations](https://eprint.iacr.org/2023/1079.pdf). In this class, the builder encodes the data with a chosen erasure code, commits to the encoded word, and proves that the committed object is a valid codeword. Sampling opens authenticated positions of that encoded word, while reconstruction uses accepted samples as erasure-code evaluations. 
+**Other schemes**. We do not focus on other post-quantum alternatives such as [FRIDA](https://eprint.iacr.org/2024/248.pdf) and [ZODA](https://angeris.github.io/papers/da-construction.pdf). This is because they do not satisfy a crucial property called *repairability*, which is achieved by the current KZG solution and implicitly assumed throughout the protocol. Informally, this property ensures that reconstructed symbols can be reinserted into the network and verify with respect to the (potentially maliciously generated) commitment. This ensures that parties will eventually agree on whether data is available or not. Without this property, one would have to significantly adapt the surrounding protocol. 
 
-**Other schemes.** The same solution space also includes commitments for tensor codes and commitments for interleaved codes from the [DAS foundations](https://eprint.iacr.org/2023/1079.pdf), as well as later systems such as [FRIDA](https://eprint.iacr.org/2024/248.pdf) and [ZODA](https://angeris.github.io/papers/da-construction.pdf). Tensor-code schemes arrange data in a multidimensional code and check row/column or higher-dimensional consistency; interleaved-code schemes batch many codewords so one sampled coordinate opens aligned symbols across them; FRIDA uses transparent FRI-style proximity testing for availability; and ZODA uses a modified tensor-code encoding where sampled rows and columns serve as both data and proof material. 
+## 3. Concrete Construction
+After introducing the overall workflow, we will now make more precise how the class of constructions work. In particular, we will define how the commitment is computed and which codes are used. While doing so, we also introduce the parameters that we will vary in our benchmarks.
 
-**Why do we choose the Commitments-for-Arbitrary-Codes construction?** This is related to a security property called repairability. It is an operational requirement that accepted DAS openings can later be used to reconstruct the original payload. This is stronger than saying that a verifier accepted a commitment: it says that the accepted material accumulated by the network is already the material needed by a decoder. In blockchain settings this distinction matters because data may need to be recovered after block acceptance by users, provers, archival nodes, or fraud-proof systems.
+The following image illustrates the workflow:
 
-Commitments for Arbitrary Codes give a direct way to obtain this property. The builder first encodes the data into an erasure-codeword and then commits to that encoded object. The validity proof binds the committed object to the code, while the opening protocol reveals authenticated pieces of the same object. Therefore, once enough distinct accepted cells are collected, reconstruction can run the corresponding erasure decoder on exactly those cells.
-
-## 5. Commitments for Arbitrary Codes: Concrete Construction
 ![image](https://hackmd.io/_uploads/S13ZCjfEzg.png)
 
-The protocol workflow is described as follows:
+For the construction, we use the Poseidon hash function, denoted as $\mathsf{H}$; we fix the erasure code as Reed-Solomon code ${\sf RS}[\mathbb{F},{\sf U},\rho]$; we choose Merkle tree commitment as the vector commitment scheme; and we use [LeanVM](https://github.com/leanEthereum/leanVM) as the SNARK proof system. 
 
-The public parameters fix the Poseidon hash function $\mathsf{H}$, a Reed-Solomon code ${\sf RS}[\mathbb{F},{\sf U},\rho]$, the row length $k$, the encoded row length $m$, the cell size $c$, the number of cells per row $\ell=m/c$, and the reconstruction threshold $t=\lceil k/c\rceil$. They also fix the LeanVM STARK proof-system parameters. In the benchmarked instantiation, each data object is parsed into $n$ blob rows, each row is encoded as one Reed-Solomon codeword, and the first $k$ symbols are systematic payload symbols.
+Then we set the row length $k$, the encoded row length $m$, the cell size $c$, the number of cells per row $\ell=m/c$, and the reconstruction threshold $t=\lceil k/c\rceil$. Each data object is parsed into $n$ blob rows, each row is encoded as one Reed-Solomon codeword, and the first $k$ symbols are systematic payload symbols. With these paramerers, the protocol workflow is described as follows:
 
-The commitment first arranges the encoded data as an $n\times m$ codeword matrix. Each row is split into $\ell$ consecutive cells $W_{i,j}$ of $c$ field elements. Every cell is hashed into a digest $e_{i,j}=\mathsf{H}(W_{i,j})$, so the construction works from a matrix of cell digests rather than directly from raw codeword symbols after this point.
+- **Initialization**: All users send their data to the builder.
+- **Commit**: The builder operates following steps:
+    - Encode each each blob of data into a RS codeword.
+    - Arranges all codewords into a $n\times m$ matrix, where each row is one codeword. Then each row is split into $\ell$ consecutive cells $W_{i,j}$ of $c$ field elements, every cell is hashed into a digest $e_{i,j}=\mathsf{H}(W_{i,j})$, so the construction works from a matrix of cell digests rather than directly from raw codeword symbols after this point.
+    - For every row $i$, the first $t$ cell digests, which cover the systematic payload cells, are hash-chained into a row digest $r_i=\mathsf{H}(e_{i,1},\ldots,e_{i,t})$. The row digests are then Merkle-aggregated into $\mathsf{root}_{\sf row}$. This row commitment gives a compact binding to each row's systematic data.
+    - For every cell column $j$, the digests $(e_{1,j},\ldots,e_{n,j})$ are Merkle-aggregated into a column root $C_j$. The column roots $(C_1,\ldots,C_{\ell})$ are then Merkle-aggregated into $\mathsf{root}_{\sf col}$. 
+    - The row root $\mathsf{root}_{\sf row}$ and column root are further hashed together to form the public commitment $\mathsf{root}=\mathsf{H}(\mathsf{root}_{\sf row},\mathsf{root}_{\sf col})$.
+    - The LeanVM proof $\pi$ binds these commitments to valid Reed-Solomon codewords. The private witness is the codeword matrix. Inside the proof, LeanVM proves the computations of: (1) the witness cells $W_{i,j}$ are hashed to all cell digests $e_{i,j}$, (2) the systematic cell digests are hash chained to row hashes and all row hashes are Merkle-aggregated into a $\mathsf{root}_{\sf row}$, (3) each column of cells are Merkle aggregated into $(C_1,\ldots,C_{\ell})$ and further aggregated into $\mathsf{root}_{\sf col}$, and the final aggregation equals the public $\mathsf{root}$. It also checks Reed-Solomon membership from the barycentric check for every row using a public vector $L$.
+    - The vector $L$ is computed outside the proof from public data. In the benchmarked rate-$1/2$ setting, let ${\sf U}=\{1,\omega,\ldots,\omega^{m-1}\}$ and $m=2k=2h$. For $x_r=(\omega^2)^r$, each row can be viewed as two length-$h$ evaluations $A_i(x_r)=w_{i,2r}$ and $B_i(x_r)=w_{i,2r+1}$. Fiat-Shamir samples $p$ from the public parameters and $\mathsf{root}$, sets $q=p/\omega$, and defines the barycentric coefficients $L_{2r}=\ell_r(p)$ and $L_{2r+1}=-\ell_r(q)$. The proof checks $\langle L,w_i\rangle=0$ for every row, which is equivalent to $A_i(p)=B_i(p/\omega)$ for valid rate-$1/2$ codewords. The verifier independently recomputes the same $L$ from public data before verifying the LeanVM proof.
+    - The builder generates the Merkle authentication paths for each column codeword cells $W_{1, j}, ..., W_{n, j}$ for $j \in [1, \ell]$.
+    - Finally, the builder uploads all codeword cells $W_{i, j}$, the commitment $\mathsf{root}$, the leanVM proof $\pi$, and the Merkle tree openings for all column codeword cells.
+- **Download Commitment**: Each verifier downloads the commitment $\mathsf{root}$ and leanVM proof $\pi$. Each verifier recomputes the vector $L$ in the same way as the builder does, checks if $\pi$ verifies with respect to $\mathsf{root}$. If not, they reject immediately.
+- **Sampling and Verification**: A verifier samples a set $Q$ of cell-column indices, queries the network, then downloads the sampled columns $W_{1,j},\ldots,W_{n,j}$ for $j \in Q$, and their Merkle tree paths to the final $\mathsf{root}$. Each verifier checks if Merkle paths are valid against $L$ and $\mathsf{root}$. If not, they reject. If they are all valid, they accept.
 
-The row side commits only to the systematic portion of each encoded row. For every row $i$, the first $t$ cell digests, which cover the systematic payload cells, are hash-chained into a row digest $r_i=\mathsf{H}(e_{i,1},\ldots,e_{i,t})$. The row digests are then Merkle-aggregated into $\mathsf{root}_{\sf row}$. This row commitment gives a compact binding to each row's systematic data.
-
-Then the full encoded matrix is commited in column-major. For every cell column $j$, the digests $(e_{1,j},\ldots,e_{n,j})$ are Merkle-aggregated into a column root $C_j$. The column roots $(C_1,\ldots,C_{\ell})$ are then Merkle-aggregated into $\mathsf{root}_{\sf col}$. Finally, the public commitment root is $\mathsf{root}=\mathsf{H}(\mathsf{root}_{\sf row},\mathsf{root}_{\sf col})$.
-
-The LeanVM proof binds these commitments to valid Reed-Solomon codewords. The private witness is the codeword matrix. Inside the proof, LeanVM proves the computations of: (1) the witness cells $W_{i,j}$ are hashed to all cell digests $e_{i,j}$, (2) the systematic cell digests are hash chained to row hashes and all row hashes are Merkle-aggregated into a $\mathsf{root}_{\sf row}$, (3) each column of cells are Merkle aggregated into $(C_1,\ldots,C_{\ell})$ and further aggregated into $\mathsf{root}_{\sf col}$, and the final aggregation equals the public $\mathsf{root}$. It also checks Reed-Solomon membership from the barycentric check for every row using a public vector $L$.
-
-The vector $L$ is computed outside the proof from public data. In the benchmarked rate-$1/2$ setting, let ${\sf U}=\{1,\omega,\ldots,\omega^{m-1}\}$ and $m=2k=2h$. For $x_r=(\omega^2)^r$, each row can be viewed as two length-$h$ evaluations $A_i(x_r)=w_{i,2r}$ and $B_i(x_r)=w_{i,2r+1}$. Fiat-Shamir samples $p$ from the public parameters and $\mathsf{root}$, sets $q=p/\omega$, and defines the barycentric coefficients $L_{2r}=\ell_r(p)$ and $L_{2r+1}=-\ell_r(q)$. The proof checks $\langle L,w_i\rangle=0$ for every row, which is equivalent to $A_i(p)=B_i(p/\omega)$ for valid rate-$1/2$ codewords. The verifier independently recomputes the same $L$ from public data before verifying the LeanVM proof.
-
-A verifier samples a set $Q$ of cell-column indices. For each sampled column $j\in Q$, the opening transcript contains the cells $W_{1,j},\ldots,W_{n,j}$ and the authentication data needed to recompute the corresponding column root $C_j$ and then authenticate $C_j$ up to $\mathsf{root}_{\sf col}$ and the final $\mathsf{root}$. Verification first checks the LeanVM proof, then hashes the opened cells back into digests, recomputes each sampled inner column root, verifies the outer Merkle authentication path, and checks the final public root.
-
-Reconstruction uses the same accepted openings. Given enough accepted transcripts, the reconstruction algorithm verifies them, unions their sampled cell-column indices, and requires at least $t$ distinct columns. It then treats the opened cells as Reed-Solomon evaluations for each row and runs erasure decoding to recover the original systematic payload rows. Thus the sampling transcript is also repair material, not only evidence that a verifier accepted.
-
-## 6. Input Parameters
-
+## 4. Input Parameters
+This section summarizes the input parameters of our benchmark. In our experiments, we keep some of them fixed, and vary the others for observing how they affect the efficency of the DAS protocol.
 | Parameter | Meaning |
 | --- | --- |
 | Base field $\mathbb{F}$ | KoalaBear base field used by LeanVM memory, Poseidon inputs, digest coordinates, and proof-system arithmetic. |
@@ -75,7 +74,8 @@ Reconstruction uses the same accepted openings. Given enough accepted transcript
 
 **Remarks.** The number of sampled cell columns opened by a verifier, denoted by $|Q|$, is decided by the desired subset-soundness level. The formula for deriving it is shown in the Appendix. 
 
-## 7. Benchmark Metrics
+## 5. Benchmark Metrics
+The benchmark numbers in this report were measured on a local PC with an Intel Core i9-14900 CPU, 32 logical CPUs (16 cores with 2 threads per core), 32 GiB memory, a single NUMA node, 36 MiB L3 cache, and AVX2 support. The benchmark uses the local default Rayon thread pool on this machine.
 
 | Metric | Meaning |
 | --- | --- |
@@ -94,17 +94,33 @@ Reconstruction uses the same accepted openings. Given enough accepted transcript
 | Poseidon16 calls | Number of Poseidon width-16 calls used by the proof relation. |
 | ExtensionOp calls | Number of extension-field operation calls used by RS membership. |
 | LeanVM proving throughput | Effective payload divided by LeanVM proving time. |
-| Full DAS throughput | Effective payload divided by the full builder-to-validator workflow time. |
+| Full DAS throughput | Effective payload divided by the critical builder-to-validator workflow time until a verifier accepts the block. |
 
-The full DAS throughput is computed as
+These metrics are chosen because the main system quantity we care about is **Full DAS throughput**: how much useful blob payload can pass through the builder-to-validator acceptance path per second. The full DAS throughput is computed as
 
-$$
-\frac{D_{\mathrm{payload}}}{T_{\mathrm{encode+commit}}+T_{\mathrm{preprocess}}+T_{\mathrm{prove}}+T_{\mathrm{open}}+T_{\mathrm{verifier\ rebuild}}+T_{\mathrm{verify\ proof}}+T_{\mathrm{verify\ openings}}+T_{\mathrm{upload}}+T_{\mathrm{download}}}.
-$$
+$$\frac{D_{\mathrm{payload}}}{T_{\mathrm{total}}}$$
 
-Here $D_{\mathrm{payload}}$ is the useful blob payload size, i.e. number of blobs times blob size with the extension-field bit-size correction. The upload and download times are computed from the uploaded/downloaded byte sizes and the assumed $50$ Mbps bandwidth (the assumption is made in terms of https://eips.ethereum.org/EIPS/eip-7870). Reconstruction is reported separately because it is not on the critical path for validator acceptance.
+where $D_{\mathrm{payload}}$ is the useful blob payload size, i.e. number of blobs times blob size with the extension-field bit-size correction. The total workflow contains one builder and $N_{\mathrm{clients}}$ verifiers:
 
-## 8. Benchmark Profile Names
+$$T_{\mathrm{total}}=T_{\mathrm{builder}}+T_{\mathrm{verifiers}}$$
+
+The builder-side time is
+
+$$T_{\mathrm{builder}}=T_{\mathrm{encode+commit}}+T_{\mathrm{preprocess}}+T_{\mathrm{prove}}+T_{\mathrm{open}}+\frac{D_{\mathrm{codeword}}+D_{\mathrm{commit}}+D_{\mathrm{proof}}}{B_{\mathrm{upload}}}$$
+
+and the verifier-side time is written as
+
+$$T_{\mathrm{verifiers}}=\max_{a\in\{1,\ldots,N_{\mathrm{clients}}\}}T_{\mathrm{verifier}}^{(a)}$$
+
+for
+
+$$T_{\mathrm{verifier}}^{(a)}=T_{\mathrm{verifier rebuild}}+T_{\mathrm{verify proof}}+T_{\mathrm{verify openings}}+\frac{D_{\mathrm{commit}}+D_{\mathrm{proof}}+D_{\mathrm{sample}}}{B_{\mathrm{download}}}.$$ 
+
+The formula above is an optimistic upper-bound model. It assumes all parties execute the protocol stages without idle gaps and only charges the measured local computation plus the modeled upload/download time; it is not an actual network simulation and does not include gossip latency, peer scheduling, or mempool/block-propagation effects. The upload and download times are computed from the uploaded/downloaded byte sizes and the assumed $50$ Mbps bandwidth (the assumption is made in terms of https://eips.ethereum.org/EIPS/eip-7870). The endpoint is verifier acceptance of a block, after proof verification and opening verification. Reconstruction is not included in Full DAS throughput, because reconstruction happens after validators have accepted the block rather than on the acceptance critical path.
+
+$N_{\mathrm{clients}}$ is the number of verifier/client transcripts. In the benchmark tables, we set $N_{\mathrm{clients}}=10000$. The formula explicitly includes $N_{\mathrm{clients}}$ verifiers, but the throughput numbers assume the ideal parallel case where all verifiers compute at the same time and spend almost equal amount of time, so $T_{\mathrm{verifiers}}$ is the wall-clock time of one verifier rather than the sum over all verifiers.
+
+## 6. Benchmark Profile Names
 
 - **Format:** `ext-bY-cZ-rN-wR`.
 - **Field:** `ext` means quintic-extension payload symbols and quintic-extension RS membership checks.
@@ -112,7 +128,7 @@ Here $D_{\mathrm{payload}}$ is the useful blob payload size, i.e. number of blob
 - **Cell size:** `c16`, `c32`, `c64`, and `c128` record the number of extension-field symbols per cell.
 - **Rows and WHIR:** `r14` means $n=14$ rows, and `w1` means WHIR log inverse rate $1$.
 
-## 9. Extension-Field Parameter Summary
+### Extension-Field Parameter Summary
 
 | Profile family | Rows $n$ | Symbol field | Challenge field | $k$ | $m$ | Cell size $c$ | Cells $\ell$ | Threshold $t$ | Opened cells | Public commitment | Membership |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
@@ -126,7 +142,39 @@ Here $D_{\mathrm{payload}}$ is the useful blob payload size, i.e. number of blob
 | `ext-b4-c32-r14-w1` | 14 | Quintic extension | Quintic extension | 32768 | 65536 | 32 | 2048 | 1024 | 29 | final root | `dot_product_ee` |
 | `ext-b4-c128-r14-w1` | 14 | Quintic extension | Quintic extension | 32768 | 65536 | 128 | 512 | 256 | 14 | final root | `dot_product_ee` |
 
-## 10. Sweep A: Blob Size
+## 7. Benchmark Results
+
+The benchmark sweeps vary blob size, cell size, row count, and WHIR rate around the extension-field construction summarized above. The raw tables are moved to the Appendix; the main takeaways are:
+
+- **Blob-size sweep:** At fixed $\ell=1024$ and $n=14$, moving from 1x to 2x/4x payloads amortizes fixed proof overhead. The best Full DAS throughput in this sweep is `ext-b4-c64-r14-w1` at $623.21$ KiB/s, while 2x and 4x have almost identical LeanVM proving throughput around $0.9$ MiB/s.
+
+- **2x cell-size sweep:** For $k=16384$, $m=32768$, and $n=14$, $c=32$ is the best measured point, with $846.33$ KiB/s LeanVM proving throughput and $578.60$ KiB/s Full DAS throughput. Larger cells reduce VM cycles but increase opening size and do not improve the full throughput in this run.
+
+- **2x row-count sweep:** Increasing $n$ amortizes fixed overhead until padding cliffs appear. The best measured Full DAS throughput is at $n=14$ with $602.28$ KiB/s, while $n=16$ and $n=32$ show sharp proving-time cliffs.
+
+- **4x cell-size sweep:** At 4x blob size, $c=32$ is the best measured point, with $882.29$ KiB/s LeanVM proving throughput and $609.71$ KiB/s Full DAS throughput. The $c=64$ point is close, but $c=16$ is much slower because it doubles the number of cells.
+
+- **4x row-count sweep:** The best measured Full DAS throughput is at $n=6$ with $538.65$ KiB/s. Larger row counts do not monotonically improve throughput because proof-system padding costs dominate at several boundaries, especially $n=16$.
+
+- **WHIR-rate sweep:** WHIR log inverse rate $1$ is consistently faster than rate $2$ for both tested profiles. Rate $2$ reduces proof size but increases proving time enough to lower Full DAS throughput.
+
+For the complete measured values, including proof size, sample size, VM cycles, Poseidon16 calls, ExtensionOp calls, and reconstruction time, see the raw benchmark tables in the Appendix.
+
+## Results Summary
+
+- **Main outcome:** A repairable post-quantum Commitments-for-Arbitrary-Codes DAS construction can be implemented with hash-based commitments and LeanVM proofs at roughly $0.9$ MiB/s across the strongest measured repairable profiles, with single-profile runs occasionally reaching about $1$ MiB/s.
+
+- **Design choice:** The construction keeps sampled cells useful for reconstruction. This is the practical advantage of the Commitments-for-Arbitrary-Codes route over approaches optimized only for sampling or proximity testing.
+
+- **Parameter choice:** Cell size $c=32$ is the strongest current point for the 2x profile, $c=32$ and $c=64$ are both competitive for the 4x profile, and row counts around $n=12$ to $n=14$ avoid the large proving-time cliffs seen at exact larger powers of two.
+
+- **Main bottleneck:** The proof relation is still dominated by Poseidon calls for cell/row/column commitments and extension-field operations for RS membership. Reducing these costs inside LeanVM is the clearest path toward higher throughput.
+
+# Appendix
+
+## A. Raw Benchmark Sweep Tables
+
+### A.1 Sweep A: Blob Size
 
 - Fixed parameters: $\ell=1024$, $n=14$, $t=512$, opened cells $=19$, WHIR log inverse rate $=1$.
 - Variable parameter: blob size, with $c$ scaled so that $\ell=m/c$ stays fixed.
@@ -137,7 +185,7 @@ Here $D_{\mathrm{payload}}$ is the useful blob payload size, i.e. number of blob
 | `ext-b2-c32-r14-w1` | 2x | 16384 | 32768 | 32 | 1024 | 4340 KiB | 367.91 KB | 172.86 KB | 0.495s | 0.076s | 4.808s | 0.081s | 0.040s | 0.009s | 0.313s | 1779460 | 295937 | 458752 | 902.66 KiB/s | 609.05 KiB/s | accepted |
 | `ext-b4-c64-r14-w1` | 4x | 32768 | 65536 | 64 | 1024 | 8680 KiB | 388.76 KB | 339.11 KB | 0.932s | 0.125s | 9.566s | 0.121s | 0.045s | 0.020s | 0.636s | 2639620 | 582657 | 917504 | 907.38 KiB/s | 623.21 KiB/s | accepted |
 
-## 11. Sweep B: Cell Size at 2x Blob Size
+### A.2 Sweep B: Cell Size at 2x Blob Size
 
 - Fixed parameters: blob size $=2x$, $n=14$, $k=16384$, $m=32768$, WHIR log inverse rate $=1$.
 - Variable parameter: cell size $c$, which changes $\ell=m/c$, $t=k/c$, and the opened-cell count.
@@ -149,7 +197,7 @@ Here $D_{\mathrm{payload}}$ is the useful blob payload size, i.e. number of blob
 | `ext-b2-c64-r14-w1` | 64 | 512 | 256 | 14 | -97.448 | 4340 KiB | 369.10 KB | 249.43 KB | 0.516s | 0.066s | 5.350s | 0.071s | 0.046s | 0.017s | 0.351s | 1320196 | 291329 | 458752 | 811.21 KiB/s | 563.94 KiB/s | accepted |
 | `ext-b2-c128-r14-w1` | 128 | 256 | 128 | 11 | -57.495 | 4340 KiB | 368.95 KB | 388.14 KB | 0.531s | 0.063s | 5.441s | 0.072s | 0.047s | 0.024s | 0.356s | 1090564 | 289025 | 458752 | 797.65 KiB/s | 554.24 KiB/s | accepted |
 
-## 12. Sweep C: Row Count at 2x Blob Size
+### A.3 Sweep C: Row Count at 2x Blob Size
 
 - Fixed parameters: blob size $=2x$, $c=32$, $k=16384$, $m=32768$, $\ell=1024$, $t=512$, opened cells $=19$, WHIR log inverse rate $=1$.
 - Variable parameter: row count $n$.
@@ -174,7 +222,7 @@ Here $D_{\mathrm{payload}}$ is the useful blob payload size, i.e. number of blob
 | `ext-b2-c32-r30-w1` | 30 | 9300 KiB | 388.67 KB | 362.86 KB | 1.137s | 0.093s | 12.130s | 0.102s | 0.046s | 0.020s | 0.710s | 3721716 | 631809 | 983040 | 766.69 KiB/s | 551.58 KiB/s | accepted |
 | `ext-b2-c32-r32-w1` | 32 | 9920 KiB | 350.37 KB | 386.61 KB | 1.211s | 0.095s | 21.419s | 0.322s | 0.058s | 0.023s | 1.080s | 3935803 | 671743 | 1048576 | 463.14 KiB/s | 372.07 KiB/s | accepted |
 
-## 13. Sweep D: Cell Size at 4x Blob Size
+### A.4 Sweep D: Cell Size at 4x Blob Size
 
 - Fixed parameters: blob size $=4x$, $n=14$, $k=32768$, $m=65536$, WHIR log inverse rate $=1$.
 - Variable parameter: cell size $c$, which changes $\ell=m/c$, $t=k/c$, and the opened-cell count.
@@ -186,7 +234,7 @@ Here $D_{\mathrm{payload}}$ is the useful blob payload size, i.e. number of blob
 | `ext-b4-c64-r14-w1` | 64 | 1024 | 512 | 19 | -83.398 | 8680 KiB | 388.76 KB | 339.11 KB | 0.960s | 0.117s | 10.026s | 0.131s | 0.045s | 0.019s | 0.661s | 2639620 | 582657 | 917504 | 865.75 KiB/s | 602.07 KiB/s | accepted |
 | `ext-b4-c128-r14-w1` | 128 | 512 | 256 | 14 | -97.448 | 8680 KiB | 388.73 KB | 494.43 KB | 0.996s | 0.100s | 10.616s | 0.109s | 0.044s | 0.027s | 0.674s | 2180356 | 578049 | 917504 | 817.63 KiB/s | 577.27 KiB/s | accepted |
 
-## 14. Sweep E: Row Count at 4x Blob Size
+### A.5 Sweep E: Row Count at 4x Blob Size
 
 - Fixed parameters: blob size $=4x$, $c=32$, $k=32768$, $m=65536$, $\ell=2048$, $t=1024$, opened cells $=29$, WHIR log inverse rate $=1$.
 - Variable parameter: row count $n$.
@@ -203,7 +251,7 @@ Here $D_{\mathrm{payload}}$ is the useful blob payload size, i.e. number of blob
 | `ext-b4-c32-r14-w1` | 14 | 8680 KiB | 390.29 KB | 264.74 KB | 1.038s | 0.168s | 11.937s | 0.192s | 0.045s | 0.015s | 0.703s | 3558148 | 591873 | 917504 | 727.15 KiB/s | 525.99 KiB/s | accepted |
 | `ext-b4-c32-r16-w1` | 16 | 9920 KiB | 353.09 KB | 300.99 KB | 1.199s | 0.180s | 21.605s | 0.404s | 0.051s | 0.017s | 1.062s | 3986251 | 671743 | 1048576 | 459.15 KiB/s | 367.73 KiB/s | accepted |
 
-## 15. Sweep F: WHIR Rate
+### A.6 Sweep F: WHIR Rate
 
 - Fixed candidates: `ext-b2-c32-r14-w1` and `ext-b4-c64-r14-w1`.
 - Variable parameter: WHIR log inverse rate $r\in\{1,2\}$ under the default LeanVM folding factors.
@@ -218,20 +266,9 @@ Here $D_{\mathrm{payload}}$ is the useful blob payload size, i.e. number of blob
 - WHIR log inverse rate $r$ means the WHIR proof-system RS rate is $2^{-r}$, so $r=1$ is rate $1/2$ and $r=2$ is rate $1/4$.
 - Rates $r=3,4$ correspond to WHIR rates $1/8$ and $1/16$, but the target extension-field profiles panic in WHIR config construction with `Increase folding_factor_0` under LeanVM's default `WHIR_INITIAL_FOLDING_FACTOR=7`. Supporting them would require changing the global WHIR initial folding factor and synchronizing verifier/recursion configuration, so they are not included as a one-variable benchmark sweep.
 
-## 16. Summary
+## B. Subset Soundness With Replacement
 
-- **Main outcome:** A repairable post-quantum Commitments-for-Arbitrary-Codes DAS construction can be implemented with hash-based commitments and LeanVM proofs at roughly $0.9$ MiB/s across the strongest measured repairable profiles, with single-profile runs occasionally reaching about $1$ MiB/s.
-
-- **Design choice:** The construction keeps sampled cells useful for reconstruction. This is the practical advantage of the Commitments-for-Arbitrary-Codes route over approaches optimized only for sampling or proximity testing.
-
-- **Parameter choice:** Cell size $c=32$ is the strongest current point for the 2x profile, $c=32$ and $c=64$ are both competitive for the 4x profile, and row counts around $n=12$ to $n=14$ avoid the large proving-time cliffs seen at exact larger powers of two.
-
-- **Main bottleneck:** The proof relation is still dominated by Poseidon calls for cell/row/column commitments and extension-field operations for RS membership. Reducing these costs inside LeanVM is the clearest path toward higher throughput.
-
-# Appendix
-### Subset Soundness With Replacement
-
-The benchmark profiles use the with-replacement subset-soundness bound from the DAS security-definition style of Hall-Andersen, Simkin, and Wagner. Let $N_{\sf clients}$ be the total number of client transcripts, let $\epsilon$ be the fraction of clients targeted by the adversary, and let $L_{\sf sub}=\lceil \epsilon N_{\sf clients}\rceil$ be the selected accepting subset size. Let $\Delta=t-1$ be the largest number of served cell columns that is still below the reconstruction threshold, and let $\ell=m/c$ be the total number of cell columns.
+The benchmark profiles use the subset-soundness with-replacement formula from [DAS foundations](https://eprint.iacr.org/2023/1079.pdf) (Lemma 3, Page 18). Let $N_{\sf clients}$ be the total number of client transcripts, let $\epsilon$ be the fraction of clients targeted by the adversary, and let $L_{\sf sub}=\lceil \epsilon N_{\sf clients}\rceil$ be the selected accepting subset size. Let $\Delta=t-1$ be the largest number of served cell columns that is still below the reconstruction threshold, and let $\ell=m/c$ be the total number of cell columns.
 
 For sampling with replacement, one verifier who opens $q=|Q|$ columns lands entirely inside a fixed non-reconstructing set of size $\Delta$ with probability $(\Delta/\ell)^q$. Union-bounding over the bad served set and over the adversarially selected accepting client subset gives
 
