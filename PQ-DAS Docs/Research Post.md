@@ -75,8 +75,6 @@ This section summarizes the input parameters of our benchmark. In our experiment
 **Remarks.** The number of sampled cell columns opened by a verifier, denoted by $|Q|$, is decided by the desired subset-soundness level. The formula for deriving it is given in the [subset soundness formula](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary.md#subset-soundness-formula) section of the supplementary material. 
 
 ## 5. Benchmark Metrics
-The benchmark numbers in this report were measured on a local PC with an Intel Core i9-14900 CPU, 32 logical CPUs (16 cores with 2 threads per core), 32 GiB memory, a single NUMA node, 36 MiB L3 cache, and AVX2 support. The benchmark uses the local default Rayon thread pool on this machine.
-
 | Metric | Meaning |
 | --- | --- |
 | Commitment size | Public commitment size. |
@@ -120,7 +118,7 @@ The formula above is an optimistic upper-bound model. It assumes all parties exe
 
 $N_{\mathrm{clients}}$ is the number of verifier/client transcripts. In the benchmark tables, we set $N_{\mathrm{clients}}=10000$. The formula explicitly includes $N_{\mathrm{clients}}$ verifiers, but the throughput numbers assume the ideal parallel case where all verifiers compute at the same time and spend almost equal amount of time, so $T_{\mathrm{verifiers}}$ is the wall-clock time of one verifier rather than the sum over all verifiers.
 
-## 6. Benchmark Profile Names
+## 6. Benchmark Profiles
 
 - **Format:** `ext-bY-cZ-rN-wR`.
 - **Field:** `ext` means quintic-extension payload symbols and quintic-extension RS membership checks.
@@ -143,6 +141,8 @@ $N_{\mathrm{clients}}$ is the number of verifier/client transcripts. In the benc
 | `ext-b4-c128-r14-w1` | 14 | Quintic extension | Quintic extension | 32768 | 65536 | 128 | 512 | 256 | 14 | final root | `dot_product_ee` |
 
 ## 7. Benchmark Results
+
+The benchmark numbers in this report were measured on a local PC with an Intel Core i9-14900 CPU, 32 logical CPUs (16 cores with 2 threads per core), 32 GiB memory, a single NUMA node, 36 MiB L3 cache, and AVX2 support. The benchmark uses the local default Rayon thread pool on this machine. Each benchmark profile is run as an end-to-end PQ-DAS execution: the host encodes and commits the payload, prepares the LeanVM statement, generates the LeanVM proof, generates openings, verifies the proof and openings, and reconstructs the sampled payload where enabled. The reported timing values are the averages over 100 runs for the same parameter profile; sizes, security estimates, and VM counters are deterministic for a fixed profile and are reported once.
 
 The benchmark sweeps vary blob size, cell size, row count, and WHIR rate around the extension-field construction summarized above. The raw tables are collected in the [benchmark tables](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary.md#benchmark-tables) section of the supplementary material; the main takeaways are:
 
