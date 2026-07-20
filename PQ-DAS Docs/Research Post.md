@@ -1,4 +1,4 @@
-# PQ-DAS constructed from LeanVM: Design and Benchmark 
+# PQ-DAS from LeanVM: Design and Benchmark 
 
 <style>
 table th, table td { white-space: nowrap; }
