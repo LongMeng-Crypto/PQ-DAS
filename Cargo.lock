@@ -670,6 +670,7 @@ dependencies = [
  "lean_prover",
  "lean_vm",
  "postcard",
+ "sha2",
 ]
 
 [[package]]

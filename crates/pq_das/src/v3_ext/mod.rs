@@ -2,11 +2,12 @@ use std::{collections::BTreeSet, fmt::Display, time::Duration};
 
 use backend::{
     Algebra, ArenaVec, BasedVectorSpace, Field, PrimeCharacteristicRing, PrimeField32, TwoAdicField, arena_vec,
-    parallel, poseidon_hash_slice, poseidon16_compress_pair,
+    parallel, poseidon16_compress_pair,
 };
 use lean_compiler::{CompilationFlags, ProgramSource, compile_program_with_flags};
 use lean_prover::{default_whir_config, prove_execution::prove_execution, verify_execution::verify_execution};
 use lean_vm::{Bytecode, EF, ExecutionWitness, F, Hints};
+use sha2::{Digest as ShaDigest, Sha256};
 
 use crate::{
     DIGEST_LEN, DemoError, EXT_DEGREE, ProofBundle, fs_block,
@@ -1179,24 +1180,60 @@ pub fn encode_and_commit(profile: ExtProfile, data: &ExtData) -> Result<(ExtComm
     ))
 }
 
-fn ext_from_digest(digest: &Digest) -> EF {
-    EF::from_basis_coefficients_slice(&digest[..EXT_DEGREE]).unwrap()
-}
+const FS_SHA256_DOMAIN: &[u8] = b"PQ-DAS-SHA256-RS-CHECK-v1";
 
 fn coeffs(value: EF) -> [F; EXT_DEGREE] {
     value.as_basis_coefficients_slice().try_into().unwrap()
 }
 
-fn fiat_shamir_digest(commitment: &ExtCommitment) -> Digest {
-    let mut values = Vec::with_capacity(3 * DIGEST_LEN);
-    values.extend_from_slice(&fs_block());
-    values.extend_from_slice(&commitment.profile.profile_block());
-    values.extend_from_slice(&commitment.root);
-    poseidon_hash_slice(&values)
+fn push_fs_field(bytes: &mut Vec<u8>, value: F) {
+    bytes.extend_from_slice(&value.as_canonical_u32().to_le_bytes());
+}
+
+fn push_fs_block(bytes: &mut Vec<u8>, block: &[F; DIGEST_LEN]) {
+    for &value in block {
+        push_fs_field(bytes, value);
+    }
+}
+
+fn fiat_shamir_transcript(commitment: &ExtCommitment) -> Vec<u8> {
+    let mut bytes =
+        Vec::with_capacity(FS_SHA256_DOMAIN.len() + (2 * DIGEST_LEN + commitment.root.len()) * size_of::<u32>());
+    bytes.extend_from_slice(FS_SHA256_DOMAIN);
+    push_fs_block(&mut bytes, &fs_block());
+    push_fs_block(&mut bytes, &commitment.profile.profile_block());
+    push_fs_block(&mut bytes, &commitment.root);
+    bytes
+}
+
+fn sha256_field_elements(transcript: &[u8], count: usize) -> Vec<F> {
+    let mut out = Vec::with_capacity(count);
+    let mut counter = 0u32;
+    while out.len() < count {
+        let mut hasher = Sha256::new();
+        hasher.update(FS_SHA256_DOMAIN);
+        hasher.update(b":expand");
+        hasher.update(counter.to_le_bytes());
+        hasher.update(transcript);
+        let digest = hasher.finalize();
+        for chunk in digest.chunks_exact(size_of::<u32>()) {
+            let candidate = u32::from_le_bytes(chunk.try_into().unwrap());
+            if candidate < F::ORDER_U32 {
+                out.push(F::from_u32(candidate));
+                if out.len() == count {
+                    break;
+                }
+            }
+        }
+        counter = counter.checked_add(1).expect("SHA-256 Fiat-Shamir counter overflow");
+    }
+    out
 }
 
 fn challenge(commitment: &ExtCommitment) -> EF {
-    ext_from_digest(&fiat_shamir_digest(commitment))
+    let transcript = fiat_shamir_transcript(commitment);
+    let coeffs: [F; EXT_DEGREE] = sha256_field_elements(&transcript, EXT_DEGREE).try_into().unwrap();
+    EF::from_basis_coefficients_slice(&coeffs).unwrap()
 }
 
 fn batch_invert(values: &mut [EF]) {
