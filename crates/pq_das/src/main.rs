@@ -97,6 +97,10 @@ enum ProfileName {
     BlobExt2xC128_14,
     #[value(name = "blob-ext-2x-c128-16")]
     BlobExt2xC128_16,
+    #[value(name = "blob-ext-2x-c128-28")]
+    BlobExt2xC128_28,
+    #[value(name = "blob-ext-2x-c128-30")]
+    BlobExt2xC128_30,
     #[value(name = "blob-ext-4x-1")]
     BlobExt4x1,
     #[value(name = "blob-ext-4x-2")]
@@ -355,6 +359,8 @@ impl Cli {
             | ProfileName::BlobExt2xC128_1
             | ProfileName::BlobExt2xC128_14
             | ProfileName::BlobExt2xC128_16
+            | ProfileName::BlobExt2xC128_28
+            | ProfileName::BlobExt2xC128_30
             | ProfileName::BlobExt4x1
             | ProfileName::BlobExt4x2
             | ProfileName::BlobExt4x4
@@ -431,6 +437,8 @@ impl Cli {
             | ProfileName::BlobExt2xC128_1
             | ProfileName::BlobExt2xC128_14
             | ProfileName::BlobExt2xC128_16
+            | ProfileName::BlobExt2xC128_28
+            | ProfileName::BlobExt2xC128_30
             | ProfileName::BlobExt4x1
             | ProfileName::BlobExt4x14
             | ProfileName::BlobExt4x16
@@ -482,6 +490,8 @@ impl Cli {
             ProfileName::BlobExt2xC128_1 => v3_ext::ExtProfile::BLOB_EXT_2X_C128_1,
             ProfileName::BlobExt2xC128_14 => v3_ext::ExtProfile::BLOB_EXT_2X_C128_14,
             ProfileName::BlobExt2xC128_16 => v3_ext::ExtProfile::BLOB_EXT_2X_C128_16,
+            ProfileName::BlobExt2xC128_28 => v3_ext::ExtProfile::BLOB_EXT_2X_C128_28,
+            ProfileName::BlobExt2xC128_30 => v3_ext::ExtProfile::BLOB_EXT_2X_C128_30,
             ProfileName::BlobExt4x1 => v3_ext::ExtProfile::BLOB_EXT_4X_1,
             ProfileName::BlobExt4x2 => v3_ext::ExtProfile::BLOB_EXT_4X_2,
             ProfileName::BlobExt4x4 => v3_ext::ExtProfile::BLOB_EXT_4X_4,
