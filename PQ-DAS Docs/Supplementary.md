@@ -1,7 +1,21 @@
 # PQ-DAS Supplementary Material
 
 ## Benchmark Tables
+### Extension-Field Parameter Summary
 
+All profiles in this table use the KoalaBear quintic extension field for payload symbols, Fiat-Shamir challenge points, and RS membership inner products.
+
+| Profile family | Rows $n$ | $k$ | $m$ | Cell size $c$ | Cells $\ell$ | Threshold $t$ | Opened cells |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `b1-c16-r14-w1` | 14 | 8192 | 16384 | 16 | 1024 | 512 | 19 |
+| `b2-c32-r14-w1` | 14 | 16384 | 32768 | 32 | 1024 | 512 | 19 |
+| `b4-c64-r14-w1` | 14 | 32768 | 65536 | 64 | 1024 | 512 | 19 |
+| `b2-c16-r14-w1` | 14 | 16384 | 32768 | 16 | 2048 | 1024 | 29 |
+| `b2-c64-r14-w1` | 14 | 16384 | 32768 | 64 | 512 | 256 | 14 |
+| `b2-c128-r14-w1` | 14 | 16384 | 32768 | 128 | 256 | 128 | 11 |
+| `b4-c16-r14-w1` | 14 | 32768 | 65536 | 16 | 4096 | 2048 | 50 |
+| `b4-c32-r14-w1` | 14 | 32768 | 65536 | 32 | 2048 | 1024 | 29 |
+| `b4-c128-r14-w1` | 14 | 32768 | 65536 | 128 | 512 | 256 | 14 |
 ### Table 1. Blob-Size Sweep
 
 - Fixed parameters: $\ell=1024$, $n=14$, $t=512$, opened cells $=19$, WHIR log inverse rate $=1$.
