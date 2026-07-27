@@ -5,21 +5,19 @@
 - **Blob size:** `b1`, `b2`, and `b4` denote the 1x, 2x, and 4x row payload profiles.
 - **Cell size:** `c16`, `c32`, `c64`, and `c128` record the number of extension-field symbols per cell.
 - **Rows and WHIR:** `r14` means $n=14$ rows, and `w1` means WHIR log inverse rate $1$.
-### Parameter Summary
+### Table 0. Benchmark Parameter Summary
 
-All profiles in this table use the KoalaBear quintic extension field for payload symbols, Fiat-Shamir challenge points, and RS membership inner products.
+All benchmark profiles covered by this table use the KoalaBear quintic extension field for payload symbols, Fiat-Shamir challenge points, and RS membership inner products.
 
-| Profile family | Rows $n$ | $k$ | $m$ | Cell size $c$ | Cells $\ell$ | Threshold $t$ | Opened cells |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `b1-c16-r14-w1` | 14 | 8192 | 16384 | 16 | 1024 | 512 | 19 |
-| `b2-c32-r14-w1` | 14 | 16384 | 32768 | 32 | 1024 | 512 | 19 |
-| `b4-c64-r14-w1` | 14 | 32768 | 65536 | 64 | 1024 | 512 | 19 |
-| `b2-c16-r14-w1` | 14 | 16384 | 32768 | 16 | 2048 | 1024 | 29 |
-| `b2-c64-r14-w1` | 14 | 16384 | 32768 | 64 | 512 | 256 | 14 |
-| `b2-c128-r14-w1` | 14 | 16384 | 32768 | 128 | 256 | 128 | 11 |
-| `b4-c16-r14-w1` | 14 | 32768 | 65536 | 16 | 4096 | 2048 | 50 |
-| `b4-c32-r14-w1` | 14 | 32768 | 65536 | 32 | 2048 | 1024 | 29 |
-| `b4-c128-r14-w1` | 14 | 32768 | 65536 | 128 | 512 | 256 | 14 |
+| Sweep | Fixed parameters | Varied parameter(s) | Profiles covered | Raw table |
+| --- | --- | --- | --- | --- |
+| Blob-size sweep | $n=14$, $\ell=1024$, $t=512$, opened cells $=19$, WHIR log inverse rate $=1$ | Blob size, with $c$ scaled to keep $\ell=m/c=1024$ | `b1-c16-r14-w1`, `b2-c32-r14-w1`, `b4-c64-r14-w1` | [Table 1](#table-1-blob-size-sweep) |
+| 2x cell-size sweep | Blob size $=2x$, $n=14$, $k=16384$, $m=32768$, WHIR log inverse rate $=1$ | $c\in\{16,32,64,128\}$, hence $\ell=m/c$, $t=k/c$, and opened cells | `b2-c16-r14-w1`, `b2-c32-r14-w1`, `b2-c64-r14-w1`, `b2-c128-r14-w1` | [Table 2](#table-2-cell-size-sweep-at-2x-blob-size) |
+| 2x row-count sweep | Blob size $=2x$, $c=32$, $k=16384$, $m=32768$, $\ell=1024$, $t=512$, opened cells $=19$, WHIR log inverse rate $=1$ | $n\in\{1,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32\}$ | `b2-c32-rN-w1` | [Table 3](#table-3-row-count-sweep-at-2x-blob-size) |
+| 4x cell-size sweep | Blob size $=4x$, $n=14$, $k=32768$, $m=65536$, WHIR log inverse rate $=1$ | $c\in\{16,32,64,128\}$, hence $\ell=m/c$, $t=k/c$, and opened cells | `b4-c16-r14-w1`, `b4-c32-r14-w1`, `b4-c64-r14-w1`, `b4-c128-r14-w1` | [Table 4](#table-4-cell-size-sweep-at-4x-blob-size) |
+| 4x row-count sweep | Blob size $=4x$, $c=32$, $k=32768$, $m=65536$, $\ell=2048$, $t=1024$, opened cells $=29$, WHIR log inverse rate $=1$ | $n\in\{1,2,4,6,8,10,12,14,16\}$ | `b4-c32-rN-w1` | [Table 5](#table-5-row-count-sweep-at-4x-blob-size) |
+| WHIR-rate sweep | Candidate profiles `b2-c32-r14` and `b4-c64-r14` | WHIR log inverse rate $r\in\{1,2\}$ | `b2-c32-r14-w1/w2`, `b4-c64-r14-w1/w2` | [Table 6](#table-6-whir-rate-sweep) |
+
 ### Table 1. Blob-Size Sweep
 
 - Fixed parameters: $\ell=1024$, $n=14$, $t=512$, opened cells $=19$, WHIR log inverse rate $=1$.
