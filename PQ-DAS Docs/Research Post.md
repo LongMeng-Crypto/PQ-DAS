@@ -1,4 +1,7 @@
 # PQ-DAS from LeanVM: Design and Benchmark 
+*Authors.* Long Meng, Benedikt Wagner, George Kadianakis.
+
+*Thanks to Tom Wambsgans, Thomas Coratger, Tau Lepton, Arantxa Zapico, and others for insightful discussions*.
 
 <style>
 table th, table td { white-space: nowrap; }
@@ -36,11 +39,13 @@ The following image illustrates the workflow:
 
 ![image](https://hackmd.io/_uploads/S13ZCjfEzg.png)
 
-For the construction, we use the [Poseidon](https://eprint.iacr.org/2019/458.pdf) hash function, denoted as $\mathsf{H}$; we fix the erasure code as Reed-Solomon (RS) code and the RS evaluation domain $\mathbb{F}$ as the KoalaBear quintic extension field; we choose Merkle tree commitment as the vector commitment scheme; and we use [LeanVM](https://github.com/leanEthereum/leanVM/tree/41aea741859420a261da251d66cb234f679a420a) as the SNARK proof system. Below, we also describe which relation is proven using LeanVM. 
+For the construction, we use the [Poseidon](https://eprint.iacr.org/2019/458.pdf) hash function, denoted as $\mathsf{H}$; we fix the erasure code as Reed-Solomon (RS) code over the field $\mathbb{F}$, which is the KoalaBear quintic extension field. For the evaluation domain, we use the roots of unity in the KoalaBear base field, so that encoding is given by an FFT;
+
+we choose Merkle tree commitment as the vector commitment scheme; and we use [LeanVM](https://github.com/leanEthereum/leanVM/tree/41aea741859420a261da251d66cb234f679a420a) as the SNARK proof system. Below, we also describe which relation is proven using LeanVM. 
 
 Very roughly, the construction works by arranging the data into rows of a matrix as in [PeerDAS](https://eprint.iacr.org/2024/1362.pdf) and extending each row via the Reed-Solomon code. Instead of KZG commitments, we use Merkle roots, and we additionally add a SNARK as explained above.
 
-More precisely, we set the row length $k$, the encoded row length $m$, the cell size $c$, the number of cells per row $\ell=m/c$, and the reconstruction threshold $t=\lceil k/c\rceil$. Each data object is parsed into $n$ rows (each row is called a blob today), each row is encoded as one Reed-Solomon codeword, and the first $k$ symbols are systematic payload symbols. With these paramerers, the protocol workflow is described as follows:
+More precisely, we set the row length $k$, the encoded row length $m = 2k$ (meaning rate $\rho = 1/2$), the cell size $c$, the number of cells per row $\ell=m/c$, and the reconstruction threshold $t=\lceil k/c\rceil$. Each data object is parsed into $n$ rows (each row is called a blob today), each row is encoded as one Reed-Solomon codeword, and the first $k$ symbols are systematic payload symbols. With these paramerers, the protocol workflow is described as follows:
 
 - **Initialization**: All users send their data to the builder.
 - **Commit**: The builder operates following steps:
@@ -84,42 +89,17 @@ More precisely, we set the row length $k$, the encoded row length $m$, the cell 
 - **Sampling and Verification**: A verifier samples a set $Q$ of cell-column indices, queries the network and downloads the sampled columns $W_{1,j},\ldots,W_{n,j}$ for $j \in Q$, and their Merkle tree paths to the final $\mathsf{root}$. Each verifier checks if Merkle paths are valid against $\mathsf{root}$. If not, they reject. If they are all valid, they accept.
 
 ## 4. RS Membership Check Instantiations
+In the relation we prove, we ultimately want to check that each row of codeword $w_i$ is a valid RS codeword. We implement this via a simple inner product with a random vector $L$. 
 
-In the relation we prove, we ultimately want to check that each row of codeword $w_i$ is a valid RS codeword. We implement this via a simple inner product with a random vector $L$.
-Here, we show different ways to instantiate $L$, and explain which one we choose. Note that below we use a different hash function $\mathsf{H}'$ for Fiat-shamir transform, which could be a standard hash function such as SHA256, Keccak, or Blake.
+There are different ways for instantiating this check. We investigate three approaches, which are respectively the parity check, the generic barycentric check, and a special form of barycentric check for when the RS code rate $\rho = \frac{1}{2}$. The details of all these approaches are at [RS membership check](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary.md#RS-Membership-Check-Instantiations). 
 
-### 4.1 Parity-check: $\deg(P_i)<k \Rightarrow c_{i,k}=\cdots=c_{i,m-1}=0$
+The computational overhead for these three approaches is very close. For a length-$m$ codeword and $n$ rows, computing the public vector $L$ outside the proof costs $\mathcal{O}(m)$ field operations after Fiat-Shamir. Inside the proof, the RS membership relation is one length-$m$ inner product per row, so the total in-proof cost is $\mathcal{O}(nm)$ field operations. 
 
-#### Preprocessing outside the proof:
+In our implementation, we choose the special barycentric check because our benchmarked RS code has rate $\rho=1/2$, so the codeword can be split into even and odd evaluations and membership reduces to the single identity $A_i(p)=B_i(p/\omega)$. Compared with the parity-check method, it avoids constructing a random linear combination over all high-degree coefficients; compared with the general barycentric check, it avoids evaluating arbitrary Lagrange bases over a chosen systematic split. Thus it has slightly cheaper computations and hence cheaper LeanVM workload.
 
-* Let ${\sf U}=\{\omega^0,\omega^1,\ldots,\omega^{m-1}\}$, where $\omega$ is a primitive $m$-th root of unity.
-* Let $i$ denote the row index, $j$ denote the codeword-symbol index on each row, and $r$ denote the coefficient index of the interpolated polynomial.
-* For each row $w_i$, let $P_i(X)=\sum_{r=0}^{m-1}c_{i,r}X^r$ be the polynomial interpolated from its field symbols, where $\forall j \in[0, m-1]: P_i(\omega^j) = w_{i,j}$.
-* The coefficients are given by $c_{i,r}=\frac{1}{m}\sum_{j=0}^{m-1} w_{i,j}\omega^{-jr}$.
-* Use Fiat-shamir transform for deriving the random challenges $\{\alpha_r\}_{r \in [k,m-1]} \leftarrow \mathsf{H}'({\sf pp},{\sf root})$.
-* Compute the shared parity-check vector $L=(L_0,\ldots,L_{m-1})$, where $\forall j\in[0,m-1]: L_j=\frac{1}{m}\sum_{r=k}^{m-1}\alpha_r\omega^{-jr}$.
+Note that below we use a different hash function $\mathsf{H}'$ for Fiat-shamir transform, which could be a standard hash function such as SHA256, Keccak, or Blake.
 
-#### Inner product inside the proof:
-
-$$ \begin{aligned} \forall i\in[1,n]:\quad \langle L,w_i\rangle &= \sum_{j=0}^{m-1}L_jw_{i,j} = \sum_{j=0}^{m-1}\left(\frac{1}{m}\sum_{r=k}^{m-1}\alpha_r\omega^{-jr}\right)w_{i,j} \\ &= \sum_{r=k}^{m-1}\alpha_r\left(\frac{1}{m}\sum_{j=0}^{m-1}w_{i,j}\omega^{-jr}\right) = \sum_{r=k}^{m-1}\alpha_rc_{i,r} = 0. \end{aligned} $$
-
-### 4.2 General barycentric check
-
-#### Preprocessing outside the proof:
-
-* Let ${\sf U} = \{u_0,u_1,\ldots,u_{m-1}\}$.
-* Let $i$ denote the row index, $j$ denote the codeword-symbol index on each row, and $s,t$ denote the interpolation and check positions.
-* Choose $S\subseteq[0,m-1]$ with $|S|=k$, and let $T=[0,m-1]\setminus S$.
-* For each $s\in S$, define the Lagrange basis polynomial $\ell_s(X)$ over ${u_s:s\in S}$, where $\ell_s(u_{s'})=1$ if $s=s'$ and $\ell_s(u_{s'})=0$ otherwise.
-* For each row $w_i$, define $P_i(X)=\sum_{s\in S}\ell_s(X)w_{i,s}$.
-* Use Fiat-shamir transform for deriving the random challenges $\{\alpha_r\}_{r \in [k,m-1]} \leftarrow \mathsf{H}'({\sf pp},{\sf root})$.
-* Compute the shared barycentric-check vector $L=(L_0,\ldots,L_{m-1})$, where $\forall t\in T:L_t=\alpha_t$ and $\forall s\in S:L_s=-\sum_{t\in T}\alpha_t\ell_s(u_t)$.
-
-#### Inner product inside the proof:
-
-$$ \begin{aligned} \forall i\in[1,n]:\quad \langle L,w_i\rangle &= \sum_{j=0}^{m-1}L_jw_{i,j} = \sum_{t\in T}L_tw_{i,t}+\sum_{s\in S}L_sw_{i,s} \\ &= \sum_{t\in T}\alpha_tw_{i,t} -\sum_{s\in S}\left(\sum_{t\in T}\alpha_t\ell_s(u_t)\right)w_{i,s} \\ &= \sum_{t\in T}\alpha_t\left(w_{i,t}-\sum_{s\in S}\ell_s(u_t)w_{i,s}\right) = \sum_{t\in T}\alpha_t\left(w_{i,t}-P_i(u_t)\right) = 0. \end{aligned} $$
-
-### 4.3 Special barycentric check $(\rho = 1/2)$:
+### Special barycentric check:
 
 #### Preprocessing outside the proof:
 
@@ -135,53 +115,16 @@ $$ \begin{aligned} \forall i\in[1,n]:\quad \langle L,w_i\rangle &= \sum_{j=0}^{m
 
 $$ \begin{aligned} \forall i\in[1,n]:\quad \langle L,w_i\rangle &= \sum_{j=0}^{m-1}L_jw_{i,j} = \sum_{r=0}^{h-1}L_{2r}w_{i,2r} +\sum_{r=0}^{h-1}L_{2r+1}w_{i,2r+1} \\ &= \sum_{r=0}^{h-1}\ell_r(p)w_{i,2r} -\sum_{r=0}^{h-1}\ell_r(q)w_{i,2r+1} = A_i(p)-B_i(q) \\ &= A_i(p)-B_i(p/\omega) = 0. \end{aligned} $$
 
-### Our choice
-
-The computational overhead for the above three approaches is very close. For a length-$m$ codeword and $n$ rows, computing the public vector $L$ outside the proof costs $\mathcal{O}(m)$ field operations after Fiat-Shamir. Inside the proof, the RS membership relation is one length-$m$ inner product per row, so the total in-proof cost is $\mathcal{O}(nm)$ field operations. In our implementation, we choose the special barycentric check because our benchmarked RS code has rate $\rho=1/2$, so the codeword can be split into even and odd evaluations and membership reduces to the single identity $A_i(p)=B_i(p/\omega)$. Compared with the parity-check method, it avoids constructing a random linear combination over all high-degree coefficients; compared with the general barycentric check, it avoids evaluating arbitrary Lagrange bases over a chosen systematic split. Thus it has slightly cheaper computations and hence cheaper LeanVM workload.
-
-For soundness, the special barycentric check uses Fiat-Shamir to sample a public random point $p$ from the public commitment, then derives the public vector $L=L(p)$. The proof only needs to show $\langle L,w_i\rangle=0$ for each row, which is the same as checking $A_i(p)=B_i(p/\omega)$. If a row $w_i$ is not a valid RS codeword, then $A_i(X)-B_i(X/\omega)$ is a nonzero polynomial of degree at most $k-1$, so a random $p$ makes it vanish with probability at most $(k-1)/|\mathbb{F}|$. Across all $n$ rows, a union bound gives at most $n(k-1)/|\mathbb{F}|$.
+### Soundness intuition
+For an intuition of soundness, the special barycentric check uses Fiat-Shamir to sample a public random point $p$ from the public commitment, then derives the public vector $L=L(p)$. The proof only needs to show $\langle L,w_i\rangle=0$ for each row, which is the same as checking $A_i(p)=B_i(p/\omega)$. If a row $w_i$ is not a valid RS codeword, then $A_i(X)-B_i(X/\omega)$ is a nonzero polynomial of degree at most $k-1$, so a random $p$ makes it vanish with probability at most $(k-1)/|\mathbb{F}|$. Across all $n$ rows, a union bound gives at most $n(k-1)/|\mathbb{F}|$.
 
 ---
 
-## 5. Input Parameters
-This section summarizes the input parameters of our benchmark. In our experiments, we keep some of them fixed, and vary the others for observing how they affect the efficency of the DAS protocol.
-| Parameter | Meaning |
-| --- | --- |
-| $\mathbb{F}$ | Quintic extension field used for payload symbols, RS evaluations, Fiat-Shamir challenge points, and RS membership inner products. |
-| $n$ | Number of blob rows in one proved matrix. |
-| $k$ | Number of payload symbols per row before rate-$1/2$ encoding. |
-| $m$ | Number of encoded symbols per row. In the measured profile, $m=2k$. |
-| $\rho$ | RS code rate $k/m$. |
-| $c$ | Number of extension-field symbols per cell. |
-| $\ell=m/c$ | Number of cells per row and number of cell columns. |
-| $t=k/c$ | Number of systematic cells per row. |
-| $\lvert Q\rvert$ | Number of sampled cell columns opened by a verifier. |
+## 5. Benchmark Metrics
 
-**Remarks.** The number of sampled cell columns opened by a verifier, denoted by $|Q|$, is decided by the desired subset-soundness level. The formula for deriving it is given in the [subset soundness formula](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary.md#subset-soundness-formula) section of the supplementary material. 
+The main metric we care about is **Full DAS throughput**: how much useful blob payload can pass through the builder-to-validator acceptance path per second. In the following we explain how this throughput is computed from measured metrics, which are explained in the table below.
 
-## 6. Benchmark Metrics
-| Metric | Meaning |
-| --- | --- |
-| $D_{\mathrm{payload}}$ | The total data size of the users |
-| $D_{\mathrm{codeword}}$ | The total size of the codeword |
-| $D_{\mathrm{commit}}$ | The size of the public commitment |
-| $D_{\mathrm{proof}}$ | The LeanVM proof size |
-| $D_{\mathrm{sample}}$ | The size of sampled openings for $\lvert Q\rvert$ columns |
-| $T_{\mathrm{encode+commit}}$ | The time to encode data, compute cell digests, and build vector commitments |
-| $T_{\mathrm{preprocess}}$ | The time to compute the RS membership check vector $L$ |
-| $T_{\mathrm{prove}}$ | The time to generate the LeanVM proof |
-| $T_{\mathrm{open}}$ | The time to produce sampled openings |
-| $T_{\mathrm{rebuild}}$ | The time for the verifier to reconstruct the vector $L$ |
-| $T_{\mathrm{verify proof}}$ | The time to verify the LeanVM proof |
-| $T_{\mathrm{verify openings}}$ | The time to verify sampled column openings |
-| $T_{\mathrm{reconstruct}}$ | The time to reconstruct the data from accepted cells |
-| VM cycles | LeanVM guest cycles. |
-| Poseidon16 calls | Number of Poseidon width-16 calls used by the proof relation. |
-| ExtensionOp calls | Number of extension-field operation calls used by RS membership. |
-| LeanVM proving throughput | Effective payload divided by LeanVM proving time. |
-| Full DAS throughput | Effective payload divided by the critical builder-to-validator workflow time until a verifier accepts the block. |
-
-These metrics are chosen because the main system quantity we care about is **Full DAS throughput**: how much useful blob payload can pass through the builder-to-validator acceptance path per second. The full DAS throughput is computed as
+With the parameters from the table below, the full DAS throughput is computed as
 
 $$\frac{D_{\mathrm{payload}}}{T_{\mathrm{total}}}$$
 
@@ -207,34 +150,34 @@ The formula above is an optimistic upper-bound model. It assumes all parties exe
 
 When we compute the full DAS throughput we assume the ideal parallel case where all verifiers compute at the same time and spend almost equal amount of time, so $T_{\mathrm{verifiers}}$ is merely the time of one (slowest) verifier rather than the sum over all verifiers.
 
-## 7. Benchmark Profiles
+| Metric | Meaning |
+| --- | --- |
+| $D_{\mathrm{payload}}$ | The total data size of the users |
+| $D_{\mathrm{codeword}}$ | The total size of the codeword |
+| $D_{\mathrm{commit}}$ | The size of the public commitment |
+| $D_{\mathrm{proof}}$ | The LeanVM proof size |
+| $D_{\mathrm{sample}}$ | The size of sampled openings for $\lvert Q\rvert$ columns |
+| $T_{\mathrm{encode+commit}}$ | The time to encode data, compute cell digests, and build vector commitments |
+| $T_{\mathrm{preprocess}}$ | The time to compute the RS membership check vector $L$ |
+| $T_{\mathrm{prove}}$ | The time to generate the LeanVM proof |
+| $T_{\mathrm{open}}$ | The time to produce sampled openings |
+| $T_{\mathrm{rebuild}}$ | The time for the verifier to reconstruct the vector $L$ |
+| $T_{\mathrm{verify proof}}$ | The time to verify the LeanVM proof |
+| $T_{\mathrm{verify openings}}$ | The time to verify sampled column openings |
+| $T_{\mathrm{reconstruct}}$ | The time to reconstruct the data from accepted cells |
+| VM cycles | LeanVM guest cycles. |
+| Poseidon16 calls | Number of Poseidon width-16 calls used by the proof relation. |
+| ExtensionOp calls | Number of extension-field operation calls used by RS membership. |
+| LeanVM proving throughput | Effective payload divided by LeanVM proving time. |
+| Full DAS throughput | Effective payload divided by the critical builder-to-validator workflow time until a verifier accepts the block. |
 
-- **Format:** `bY-cZ-rN-wR`.
-- **Blob size:** `b1`, `b2`, and `b4` denote the 1x, 2x, and 4x row payload profiles.
-- **Cell size:** `c16`, `c32`, `c64`, and `c128` record the number of extension-field symbols per cell.
-- **Rows and WHIR:** `r14` means $n=14$ rows, and `w1` means WHIR log inverse rate $1$.
+**Remark.** The number of sampled cell columns opened by a verifier, denoted by $|Q|$, is decided by the desired subset-soundness level. The formula for deriving it is given in the [subset soundness formula](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary.md#subset-soundness-formula) section of the supplementary material. 
 
-### Extension-Field Parameter Summary
-
-All profiles in this table use the KoalaBear quintic extension field for payload symbols, Fiat-Shamir challenge points, and RS membership inner products.
-
-| Profile family | Rows $n$ | $k$ | $m$ | Cell size $c$ | Cells $\ell$ | Threshold $t$ | Opened cells |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `b1-c16-r14-w1` | 14 | 8192 | 16384 | 16 | 1024 | 512 | 19 |
-| `b2-c32-r14-w1` | 14 | 16384 | 32768 | 32 | 1024 | 512 | 19 |
-| `b4-c64-r14-w1` | 14 | 32768 | 65536 | 64 | 1024 | 512 | 19 |
-| `b2-c16-r14-w1` | 14 | 16384 | 32768 | 16 | 2048 | 1024 | 29 |
-| `b2-c64-r14-w1` | 14 | 16384 | 32768 | 64 | 512 | 256 | 14 |
-| `b2-c128-r14-w1` | 14 | 16384 | 32768 | 128 | 256 | 128 | 11 |
-| `b4-c16-r14-w1` | 14 | 32768 | 65536 | 16 | 4096 | 2048 | 50 |
-| `b4-c32-r14-w1` | 14 | 32768 | 65536 | 32 | 2048 | 1024 | 29 |
-| `b4-c128-r14-w1` | 14 | 32768 | 65536 | 128 | 512 | 256 | 14 |
-
-## 8. Benchmark Results
+## 6. Overview of Benchmark Results
 
 The benchmark numbers in this report were measured on a local PC with an Intel Core i9-14900 CPU, 32 logical CPUs (16 cores with 2 threads per core), 32 GiB memory, a single NUMA node, 36 MiB L3 cache, and AVX2 support. The benchmark uses the local default Rayon thread pool on this machine. Each benchmark profile is run as an end-to-end PQ-DAS execution: encodes and commits the data, prepares the LeanVM statement, generates the LeanVM proof, generates openings, verifies the proof and openings, and reconstructs the sampled payload where enabled. The reported timing values are the averages over 100 runs for the same parameter profile; sizes, security estimates, and VM counters are deterministic for a fixed profile and are reported once.
 
-The benchmark sweeps vary blob size, cell size, row count, and WHIR rate around the extension-field construction summarized above. The raw tables are collected in the [benchmark tables](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary.md#benchmark-tables) section of the supplementary material; the main takeaways are:
+The benchmark sweeps vary blob size $k$, cell size $c$, row count $n$, and WHIR rate around the extension-field construction summarized above. The raw tables are collected in the [benchmark tables](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary.md#benchmark-tables) section of the supplementary material; the main takeaways are:
 
 - **Blob-size sweep:** At fixed $\ell=1024$ and $n=14$, moving from 1x to 2x/4x payloads amortizes fixed proof overhead. The best Full DAS throughput in this sweep is `b4-c64-r14-w1` at $623.21$ KiB/s, while 2x and 4x have almost identical LeanVM proving throughput around $0.9$ MiB/s ([Table 1](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary.md#table-1-blob-size-sweep)).
 
@@ -246,11 +189,11 @@ The benchmark sweeps vary blob size, cell size, row count, and WHIR rate around 
 
 - **4x row-count sweep:** The best measured Full DAS throughput is at $n=6$ with $538.65$ KiB/s. Larger row counts do not monotonically improve throughput because proof-system padding costs dominate at several boundaries, especially $n=16$ ([Table 5](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary.md#table-5-row-count-sweep-at-4x-blob-size)).
 
-- **WHIR-rate sweep:** WHIR log inverse rate $1$ is consistently faster than rate $2$ for both tested profiles. Rate $2$ reduces proof size but increases proving time enough to lower Full DAS throughput ([Table 6](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary.md#table-6-whir-rate-sweep)).
+- **WHIR-rate sweep:** WHIR log inverse rate $1$ is consistently faster than log inverse rate $2$ for both tested profiles. Log inverse rate $2$ reduces proof size but increases proving time enough to lower Full DAS throughput ([Table 6](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary.md#table-6-whir-rate-sweep)).
 
 For the complete measured values, including proof size, sample size, VM cycles, Poseidon16 calls, ExtensionOp calls, and reconstruction time, see the [benchmark tables](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary.md#benchmark-tables) in the supplementary material.
 
-## Summary and Future Works
+## Summary and Future Directions
 Overall we have the following summaries from our experiments:
 - **Main outcome:** A post-quantum DAS construction can be implemented with hash-based commitments and LeanVM proofs at roughly $0.9$ MiB/s across the strongest measured profiles, with single-profile runs occasionally reaching about $1$ MiB/s.
 
@@ -263,4 +206,4 @@ And we have the following directions to work on for next steps:
 
 - **Alternative erasure code**: We plan to replace the RS code with some other codes that are potentially efficient, such as [multiplicity codes](https://eprint.iacr.org/2025/1414), or [linear-time encodable code](https://eprint.iacr.org/2021/1043), and benchmark their efficiency for comparing with the current results.
 
-- **Alternative proof systems**: We also plan to instantiate the DAS SNARK/STARK layer with proof systems other than LeanVM and benchmark whether they give better throughput for the same DAS construction.
+- **Alternative proof systems**: We also plan to instantiate the DAS SNARK/STARK layer with proof systems other than LeanVM, or LeanVM with some DAS-specific incremental modifications, and benchmark whether they give better throughput for the same DAS construction.
