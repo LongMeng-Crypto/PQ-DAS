@@ -5,7 +5,7 @@
 - **Blob size:** `b1`, `b2`, and `b4` denote the 1x, 2x, and 4x row payload profiles.
 - **Cell size:** `c16`, `c32`, `c64`, and `c128` record the number of extension-field symbols per cell.
 - **Rows and WHIR:** `r14` means $n=14$ rows, and `w1` means WHIR log inverse rate $1$.
-### Table 0. Benchmark Parameter Summary
+### Table 0. Benchmark Sweep Parameter Summary
 
 All benchmark profiles covered by this table use the KoalaBear quintic extension field for payload symbols, Fiat-Shamir challenge points, and RS membership inner products.
 

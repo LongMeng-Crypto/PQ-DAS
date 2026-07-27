@@ -177,7 +177,20 @@ When we compute the full DAS throughput we assume the ideal parallel case where 
 
 The benchmark numbers in this report were measured on a local PC with an Intel Core i9-14900 CPU, 32 logical CPUs (16 cores with 2 threads per core), 32 GiB memory, a single NUMA node, 36 MiB L3 cache, and AVX2 support. The benchmark uses the local default Rayon thread pool on this machine. Each benchmark profile is run as an end-to-end PQ-DAS execution: encodes and commits the data, prepares the LeanVM statement, generates the LeanVM proof, generates openings, verifies the proof and openings, and reconstructs the sampled payload where enabled. The reported timing values are the averages over 100 runs for the same parameter profile; sizes, security estimates, and VM counters are deterministic for a fixed profile and are reported once.
 
-The benchmark sweeps vary blob size $k$, cell size $c$, row count $n$, and WHIR rate around the extension-field construction summarized above. The raw tables are collected in the [benchmark tables](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary.md#benchmark-tables) section of the supplementary material; the main takeaways are:
+The benchmark sweeps vary blob size $k$, cell size $c$, row count $n$, and WHIR rate around the extension-field construction summarized above. To make these comparisons interpretable, each sweep fixes all but one family of parameters: the blob-size sweep fixes $n=14$ and $\ell=1024$ while scaling $k,m,c$ together; the 2x and 4x cell-size sweeps fix the blob size and $n=14$ while varying $c$; the 2x and 4x row-count sweeps fix the blob size and cell size while varying $n$; and the WHIR-rate sweep fixes two representative profiles while varying only the WHIR log inverse rate. A compact parameter summary is given in [Table 0](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary.md#table-0-benchmark-sweep-parameter-summary), and the raw measured values are collected in the [benchmark tables](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary.md#benchmark-tables) section of the supplementary material.
+
+The best measured point in each sweep is summarized below before the detailed takeaways.
+
+| Sweep | Best profile | $n$ | $k$ | $m$ | $c$ | $\ell$ | WHIR log inverse rate | LeanVM proving throughput | Full DAS throughput |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Blob-size sweep | `b4-c64-r14-w1` | 14 | 32768 | 65536 | 64 | 1024 | 1 | 907.38 KiB/s | 623.21 KiB/s |
+| 2x cell-size sweep | `b2-c32-r14-w1` | 14 | 16384 | 32768 | 32 | 1024 | 1 | 846.33 KiB/s | 578.60 KiB/s |
+| 2x row-count sweep | `b2-c32-r14-w1` | 14 | 16384 | 32768 | 32 | 1024 | 1 | 887.16 KiB/s | 602.28 KiB/s |
+| 4x cell-size sweep | `b4-c32-r14-w1` | 14 | 32768 | 65536 | 32 | 2048 | 1 | 882.29 KiB/s | 609.71 KiB/s |
+| 4x row-count sweep | `b4-c32-r6-w1` | 6 | 32768 | 65536 | 32 | 2048 | 1 | 795.89 KiB/s | 538.65 KiB/s |
+| WHIR-rate sweep | `b2-c32-r14-w1` | 14 | 16384 | 32768 | 32 | 1024 | 1 | 789.38 KiB/s | 551.19 KiB/s |
+
+The main takeaways are:
 
 - **Blob-size sweep:** At fixed $\ell=1024$ and $n=14$, moving from 1x to 2x/4x payloads amortizes fixed proof overhead. The best Full DAS throughput in this sweep is `b4-c64-r14-w1` at $623.21$ KiB/s, while 2x and 4x have almost identical LeanVM proving throughput around $0.9$ MiB/s ([Table 1](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary.md#table-1-blob-size-sweep)).
 
