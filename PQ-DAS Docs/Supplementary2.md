@@ -2,7 +2,7 @@
 
 ## Benchmark Tables
 
-These tables report the latest V3-ext server sweep results measured with the same benchmark parameters as the main report on a stronger server: AMD EPYC 9V74 processor, 32 logical CPUs (16 cores with 2 threads per core), 62 GiB memory, AVX-512 support, and `RAYON_NUM_THREADS=32`. The tables below record the server-side throughput, timing, proof-size, sample-size, and VM-counter results for comparison with the local-PC measurements in the main report.
+These tables report the latest V3-ext server sweep results measured with the same benchmark parameters as the main report on a stronger server: AMD EPYC 9V74 processor, 32 logical CPUs (16 cores with 2 threads per core), 62 GiB memory and AVX-512 support. The tables below record the server-side throughput, timing, proof-size, sample-size, and VM-counter results for comparison with the local-PC measurements in the main report.
 
 ### Table 1. Blob-Size Sweep
 
