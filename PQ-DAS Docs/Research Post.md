@@ -41,7 +41,7 @@ The following image illustrates the workflow:
 
 For the construction, we use the [Poseidon](https://eprint.iacr.org/2019/458.pdf) hash function, denoted as $\mathsf{H}$; we fix the erasure code as Reed-Solomon (RS) code over the field $\mathbb{F}$, which is the KoalaBear quintic extension field. For the evaluation domain, we use the roots of unity in the KoalaBear base field, so that encoding is given by an FFT;
 
-we choose Merkle tree commitment as the vector commitment scheme; and we use [LeanVM](https://github.com/leanEthereum/leanVM/tree/41aea741859420a261da251d66cb234f679a420a) as the SNARK proof system. Below, we also describe which relation is proven using LeanVM. 
+We choose Merkle tree commitment as the vector commitment scheme; and we use [LeanVM](https://github.com/leanEthereum/leanVM/tree/41aea741859420a261da251d66cb234f679a420a) as the SNARK proof system. Below, we also describe which relation is proven using LeanVM. 
 
 Very roughly, the construction works by arranging the data into rows of a matrix as in [PeerDAS](https://eprint.iacr.org/2024/1362.pdf) and extending each row via the Reed-Solomon code. Instead of KZG commitments, we use Merkle roots, and we additionally add a SNARK as explained above.
 
@@ -205,6 +205,8 @@ The main takeaways are:
 - **WHIR-rate sweep:** WHIR log inverse rate $1$ is consistently faster than log inverse rate $2$ for both tested profiles. Log inverse rate $2$ reduces proof size but increases proving time enough to lower Full DAS throughput ([Table 6](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary.md#table-6-whir-rate-sweep)).
 
 For the complete measured values, including proof size, sample size, VM cycles, Poseidon16 calls, ExtensionOp calls, and reconstruction time, see the [benchmark tables](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary.md#benchmark-tables) in the supplementary material.
+
+We also reran the same benchmark profiles on a stronger server with an AMD EPYC 9V74 processor, 32 logical CPUs (16 cores with 2 threads per core), 62 GiB memory, AVX-512 support, and `RAYON_NUM_THREADS=32`. For the same `b4-c64-r14-w1` profile, this server improves LeanVM proving throughput from $907.38$ KiB/s to $1183.20$ KiB/s, a $30.4\%$ increase, and Full DAS throughput from $623.21$ KiB/s to $794.57$ KiB/s, a $27.5\%$ increase. The full server-side benchmark tables are available in [Supplementary2.md](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary2.md).
 
 ## Summary and Future Directions
 Overall we have the following summaries from our experiments:
