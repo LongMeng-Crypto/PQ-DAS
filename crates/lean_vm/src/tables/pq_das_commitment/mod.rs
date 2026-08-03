@@ -8,47 +8,118 @@ use air::*;
 pub const PQ_DAS_COMMITMENT_NAME: &str = "pq_das_commitment";
 pub const PQ_DAS_COMMITMENT_DOMAINSEP: usize = 10;
 
-pub const PQ_DAS_COMMITMENT_N: usize = 15;
-pub const PQ_DAS_COMMITMENT_N_PADDED: usize = 16;
-pub const PQ_DAS_COMMITMENT_M_EXT: usize = 32_768;
-pub const PQ_DAS_COMMITMENT_K_EXT: usize = 16_384;
-pub const PQ_DAS_COMMITMENT_C_EXT: usize = 32;
-pub const PQ_DAS_COMMITMENT_CELL_BASE_LEN: usize = PQ_DAS_COMMITMENT_C_EXT * DIMENSION;
-pub const PQ_DAS_COMMITMENT_N_CELLS: usize = PQ_DAS_COMMITMENT_M_EXT / PQ_DAS_COMMITMENT_C_EXT;
-pub const PQ_DAS_COMMITMENT_SYSTEMATIC_CELLS: usize = PQ_DAS_COMMITMENT_K_EXT / PQ_DAS_COMMITMENT_C_EXT;
-pub const PQ_DAS_COMMITMENT_CELL_CHUNKS: usize = PQ_DAS_COMMITMENT_CELL_BASE_LEN / DIGEST_LEN;
-pub const PQ_DAS_COMMITMENT_ROW_STRIDE: usize = PQ_DAS_COMMITMENT_M_EXT * DIMENSION;
+pub const PQ_DAS_COMMITMENT_BASELINE_N: usize = 15;
+pub const PQ_DAS_COMMITMENT_BASELINE_M_EXT: usize = 32_768;
+pub const PQ_DAS_COMMITMENT_BASELINE_C_EXT: usize = 32;
 
-pub const PQ_DAS_COMMITMENT_CELL_DIGESTS_LEN: usize =
-    PQ_DAS_COMMITMENT_N_CELLS * PQ_DAS_COMMITMENT_N_PADDED * DIGEST_LEN;
-pub const PQ_DAS_COMMITMENT_ROW_HASHES_OFFSET: usize = PQ_DAS_COMMITMENT_CELL_DIGESTS_LEN;
-pub const PQ_DAS_COMMITMENT_ROW_HASHES_LEN: usize = PQ_DAS_COMMITMENT_N_PADDED * DIGEST_LEN;
-pub const PQ_DAS_COMMITMENT_COLUMN_ROOTS_OFFSET: usize =
-    PQ_DAS_COMMITMENT_ROW_HASHES_OFFSET + PQ_DAS_COMMITMENT_ROW_HASHES_LEN;
-pub const PQ_DAS_COMMITMENT_COLUMN_ROOTS_LEN: usize = PQ_DAS_COMMITMENT_N_CELLS * DIGEST_LEN;
-pub const PQ_DAS_COMMITMENT_CELL_TEMPS_OFFSET: usize =
-    PQ_DAS_COMMITMENT_COLUMN_ROOTS_OFFSET + PQ_DAS_COMMITMENT_COLUMN_ROOTS_LEN;
-pub const PQ_DAS_COMMITMENT_CELL_TEMPS_PER_CELL: usize = (PQ_DAS_COMMITMENT_CELL_CHUNKS - 2) * DIGEST_LEN;
-pub const PQ_DAS_COMMITMENT_CELL_TEMPS_LEN: usize =
-    PQ_DAS_COMMITMENT_N * PQ_DAS_COMMITMENT_N_CELLS * PQ_DAS_COMMITMENT_CELL_TEMPS_PER_CELL;
-pub const PQ_DAS_COMMITMENT_ROW_TEMPS_OFFSET: usize =
-    PQ_DAS_COMMITMENT_CELL_TEMPS_OFFSET + PQ_DAS_COMMITMENT_CELL_TEMPS_LEN;
-pub const PQ_DAS_COMMITMENT_ROW_TEMPS_PER_ROW: usize = (PQ_DAS_COMMITMENT_SYSTEMATIC_CELLS - 2) * DIGEST_LEN;
-pub const PQ_DAS_COMMITMENT_ROW_TEMPS_LEN: usize = PQ_DAS_COMMITMENT_N * PQ_DAS_COMMITMENT_ROW_TEMPS_PER_ROW;
-pub const PQ_DAS_COMMITMENT_COLUMN_TEMPS_OFFSET: usize =
-    PQ_DAS_COMMITMENT_ROW_TEMPS_OFFSET + PQ_DAS_COMMITMENT_ROW_TEMPS_LEN;
-pub const PQ_DAS_COMMITMENT_COLUMN_TEMPS_PER_COLUMN: usize = 15 * DIGEST_LEN;
-pub const PQ_DAS_COMMITMENT_COLUMN_TEMPS_LEN: usize =
-    PQ_DAS_COMMITMENT_N_CELLS * PQ_DAS_COMMITMENT_COLUMN_TEMPS_PER_COLUMN;
-pub const PQ_DAS_COMMITMENT_ROW_ROOT_TEMPS_OFFSET: usize =
-    PQ_DAS_COMMITMENT_COLUMN_TEMPS_OFFSET + PQ_DAS_COMMITMENT_COLUMN_TEMPS_LEN;
-pub const PQ_DAS_COMMITMENT_ROW_ROOT_TEMPS_LEN: usize = 15 * DIGEST_LEN;
-pub const PQ_DAS_COMMITMENT_OUTER_TEMPS_OFFSET: usize =
-    PQ_DAS_COMMITMENT_ROW_ROOT_TEMPS_OFFSET + PQ_DAS_COMMITMENT_ROW_ROOT_TEMPS_LEN;
-pub const PQ_DAS_COMMITMENT_OUTER_TEMPS_LEN: usize = (PQ_DAS_COMMITMENT_N_CELLS - 1) * DIGEST_LEN;
-pub const PQ_DAS_COMMITMENT_ZERO_DIGEST_OFFSET: usize =
-    PQ_DAS_COMMITMENT_OUTER_TEMPS_OFFSET + PQ_DAS_COMMITMENT_OUTER_TEMPS_LEN;
-pub const PQ_DAS_COMMITMENT_SCRATCH_LEN: usize = PQ_DAS_COMMITMENT_ZERO_DIGEST_OFFSET + DIGEST_LEN;
+const SUPPORTED_COMMITMENT_PROFILES: &[(usize, usize, usize)] = &[
+    (15, 32_768, 32),
+    (14, 32_768, 128),
+    (30, 32_768, 32),
+    (14, 65_536, 128),
+    (14, 65_536, 64),
+];
+
+pub const PQ_DAS_COMMITMENT_SCRATCH_LEN: usize = 5_079_064;
+
+#[derive(Debug, Clone, Copy)]
+struct CommitmentProfile {
+    rows: usize,
+    rows_padded: usize,
+    row_len: usize,
+    k: usize,
+    cell_size: usize,
+    cell_base_len: usize,
+    n_cells: usize,
+    systematic_cells: usize,
+    cell_chunks: usize,
+    row_stride: usize,
+    row_hashes_offset: usize,
+    column_roots_offset: usize,
+    cell_temps_offset: usize,
+    cell_temps_per_cell: usize,
+    row_temps_offset: usize,
+    row_temps_per_row: usize,
+    column_temps_offset: usize,
+    column_temps_per_column: usize,
+    row_root_temps_offset: usize,
+    outer_temps_offset: usize,
+    zero_digest_offset: usize,
+    scratch_len: usize,
+}
+
+impl CommitmentProfile {
+    fn supported(rows: usize, row_len: usize, cell_size: usize) -> Option<Self> {
+        if !SUPPORTED_COMMITMENT_PROFILES.contains(&(rows, row_len, cell_size)) {
+            return None;
+        }
+        if row_len % cell_size != 0 || (row_len / 2) % cell_size != 0 {
+            return None;
+        }
+        let rows_padded = rows.next_power_of_two();
+        let k = row_len / 2;
+        let cell_base_len = cell_size * DIMENSION;
+        let n_cells = row_len / cell_size;
+        let systematic_cells = k / cell_size;
+        let cell_chunks = cell_base_len / DIGEST_LEN;
+        if rows_padded < 2 || !rows_padded.is_power_of_two() || n_cells < 2 || !n_cells.is_power_of_two() {
+            return None;
+        }
+        if cell_chunks < 2 || systematic_cells < 2 {
+            return None;
+        }
+
+        let row_stride = row_len * DIMENSION;
+        let cell_digests_len = n_cells * rows_padded * DIGEST_LEN;
+        let row_hashes_offset = cell_digests_len;
+        let row_hashes_len = rows_padded * DIGEST_LEN;
+        let column_roots_offset = row_hashes_offset + row_hashes_len;
+        let column_roots_len = n_cells * DIGEST_LEN;
+        let cell_temps_offset = column_roots_offset + column_roots_len;
+        let cell_temps_per_cell = (cell_chunks - 2) * DIGEST_LEN;
+        let cell_temps_len = rows * n_cells * cell_temps_per_cell;
+        let row_temps_offset = cell_temps_offset + cell_temps_len;
+        let row_temps_per_row = (systematic_cells - 2) * DIGEST_LEN;
+        let row_temps_len = rows * row_temps_per_row;
+        let column_temps_offset = row_temps_offset + row_temps_len;
+        let column_temps_per_column = (rows_padded - 1) * DIGEST_LEN;
+        let column_temps_len = n_cells * column_temps_per_column;
+        let row_root_temps_offset = column_temps_offset + column_temps_len;
+        let row_root_temps_len = (rows_padded - 1) * DIGEST_LEN;
+        let outer_temps_offset = row_root_temps_offset + row_root_temps_len;
+        let outer_temps_len = (n_cells - 1) * DIGEST_LEN;
+        let zero_digest_offset = outer_temps_offset + outer_temps_len;
+        let scratch_len = zero_digest_offset + DIGEST_LEN;
+        if scratch_len > PQ_DAS_COMMITMENT_SCRATCH_LEN {
+            return None;
+        }
+
+        Some(Self {
+            rows,
+            rows_padded,
+            row_len,
+            k,
+            cell_size,
+            cell_base_len,
+            n_cells,
+            systematic_cells,
+            cell_chunks,
+            row_stride,
+            row_hashes_offset,
+            column_roots_offset,
+            cell_temps_offset,
+            cell_temps_per_cell,
+            row_temps_offset,
+            row_temps_per_row,
+            column_temps_offset,
+            column_temps_per_column,
+            row_root_temps_offset,
+            outer_temps_offset,
+            zero_digest_offset,
+            scratch_len,
+        })
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PqDasCommitmentPrecompile<const BUS: bool>;
@@ -115,16 +186,15 @@ impl<const BUS: bool> TableT for PqDasCommitmentPrecompile<BUS> {
         else {
             unreachable!("PqDasCommitment table called with non-PQ-DAS args");
         };
-        if rows != PQ_DAS_COMMITMENT_N || row_len != PQ_DAS_COMMITMENT_M_EXT || cell_size != PQ_DAS_COMMITMENT_C_EXT {
+        let Some(profile) = CommitmentProfile::supported(rows, row_len, cell_size) else {
             return Err(RunnerError::InvalidExtensionOp);
-        }
+        };
         for k in 0..DIGEST_LEN {
-            ctx.memory.set(
-                scratch_base.to_usize() + PQ_DAS_COMMITMENT_ZERO_DIGEST_OFFSET + k,
-                F::ZERO,
-            )?;
+            ctx.memory
+                .set(scratch_base.to_usize() + profile.zero_digest_offset + k, F::ZERO)?;
         }
         let mut relay = CommitmentRelay::new(
+            profile,
             codeword_base.to_usize(),
             public_root_ptr.to_usize(),
             scratch_base.to_usize(),
@@ -134,6 +204,7 @@ impl<const BUS: bool> TableT for PqDasCommitmentPrecompile<BUS> {
 }
 
 struct CommitmentRelay {
+    profile: CommitmentProfile,
     codeword_base: usize,
     public_root_ptr: usize,
     scratch_base: usize,
@@ -141,8 +212,9 @@ struct CommitmentRelay {
 }
 
 impl CommitmentRelay {
-    fn new(codeword_base: usize, public_root_ptr: usize, scratch_base: usize) -> Self {
+    fn new(profile: CommitmentProfile, codeword_base: usize, public_root_ptr: usize, scratch_base: usize) -> Self {
         Self {
+            profile,
             codeword_base,
             public_root_ptr,
             scratch_base,
@@ -154,35 +226,33 @@ impl CommitmentRelay {
         self.scratch_base + offset
     }
     fn cell_digest(&self, cell: usize, row: usize) -> usize {
-        self.s(cell * PQ_DAS_COMMITMENT_N_PADDED * DIGEST_LEN + row * DIGEST_LEN)
+        self.s(cell * self.profile.rows_padded * DIGEST_LEN + row * DIGEST_LEN)
     }
     fn row_hash(&self, row: usize) -> usize {
-        self.s(PQ_DAS_COMMITMENT_ROW_HASHES_OFFSET + row * DIGEST_LEN)
+        self.s(self.profile.row_hashes_offset + row * DIGEST_LEN)
     }
     fn column_root(&self, cell: usize) -> usize {
-        self.s(PQ_DAS_COMMITMENT_COLUMN_ROOTS_OFFSET + cell * DIGEST_LEN)
+        self.s(self.profile.column_roots_offset + cell * DIGEST_LEN)
     }
     fn cell_temp(&self, row: usize, cell: usize, temp: usize) -> usize {
-        self.s(PQ_DAS_COMMITMENT_CELL_TEMPS_OFFSET
-            + (row * PQ_DAS_COMMITMENT_N_CELLS + cell) * PQ_DAS_COMMITMENT_CELL_TEMPS_PER_CELL
+        self.s(self.profile.cell_temps_offset
+            + (row * self.profile.n_cells + cell) * self.profile.cell_temps_per_cell
             + temp * DIGEST_LEN)
     }
     fn row_temp(&self, row: usize, temp: usize) -> usize {
-        self.s(PQ_DAS_COMMITMENT_ROW_TEMPS_OFFSET + row * PQ_DAS_COMMITMENT_ROW_TEMPS_PER_ROW + temp * DIGEST_LEN)
+        self.s(self.profile.row_temps_offset + row * self.profile.row_temps_per_row + temp * DIGEST_LEN)
     }
     fn column_temp(&self, cell: usize, temp: usize) -> usize {
-        self.s(PQ_DAS_COMMITMENT_COLUMN_TEMPS_OFFSET
-            + cell * PQ_DAS_COMMITMENT_COLUMN_TEMPS_PER_COLUMN
-            + temp * DIGEST_LEN)
+        self.s(self.profile.column_temps_offset + cell * self.profile.column_temps_per_column + temp * DIGEST_LEN)
     }
     fn row_root_temp(&self, temp: usize) -> usize {
-        self.s(PQ_DAS_COMMITMENT_ROW_ROOT_TEMPS_OFFSET + temp * DIGEST_LEN)
+        self.s(self.profile.row_root_temps_offset + temp * DIGEST_LEN)
     }
     fn outer_temp(&self, temp: usize) -> usize {
-        self.s(PQ_DAS_COMMITMENT_OUTER_TEMPS_OFFSET + temp * DIGEST_LEN)
+        self.s(self.profile.outer_temps_offset + temp * DIGEST_LEN)
     }
     fn zero_digest(&self) -> usize {
-        self.s(PQ_DAS_COMMITMENT_ZERO_DIGEST_OFFSET)
+        self.s(self.profile.zero_digest_offset)
     }
 
     fn push_call<M: MemoryAccess>(
@@ -225,105 +295,122 @@ impl CommitmentRelay {
         dest: usize,
         ctx: &mut InstructionContext<'_, M>,
     ) -> Result<(), RunnerError> {
+        if self.profile.cell_chunks == 2 {
+            return self.push_call(input, input + DIGEST_LEN, dest, ctx);
+        }
         let first = self.cell_temp(row, cell, 0);
         self.push_call(input, input + DIGEST_LEN, first, ctx)?;
-        for chunk in 1..(PQ_DAS_COMMITMENT_CELL_CHUNKS - 2) {
+        for chunk in 1..(self.profile.cell_chunks - 2) {
             let prev = self.cell_temp(row, cell, chunk - 1);
             let out = self.cell_temp(row, cell, chunk);
             self.push_call(prev, input + (chunk + 1) * DIGEST_LEN, out, ctx)?;
         }
-        let last_temp = self.cell_temp(row, cell, PQ_DAS_COMMITMENT_CELL_CHUNKS - 3);
+        let last_temp = self.cell_temp(row, cell, self.profile.cell_chunks - 3);
         self.push_call(
             last_temp,
-            input + (PQ_DAS_COMMITMENT_CELL_CHUNKS - 1) * DIGEST_LEN,
+            input + (self.profile.cell_chunks - 1) * DIGEST_LEN,
             dest,
             ctx,
         )
     }
 
-    fn merkle16<M: MemoryAccess>(
+    fn merkle_power_of_two<M: MemoryAccess>(
         &mut self,
-        leaves: &[usize; 16],
+        leaves: Vec<usize>,
+        temps_start: usize,
         dest: usize,
-        temps: &[usize; 15],
         ctx: &mut InstructionContext<'_, M>,
-    ) -> Result<(), RunnerError> {
-        for node in 0..8 {
-            self.push_call(leaves[2 * node], leaves[2 * node + 1], temps[node], ctx)?;
+    ) -> Result<usize, RunnerError> {
+        debug_assert!(leaves.len().is_power_of_two());
+        let mut current = leaves;
+        let mut cursor = 0usize;
+        while current.len() > 1 {
+            let next_len = current.len() / 2;
+            let mut next = Vec::with_capacity(next_len);
+            for node in 0..next_len {
+                let out = if next_len == 1 {
+                    dest
+                } else {
+                    let temp = temps_start + cursor * DIGEST_LEN;
+                    cursor += 1;
+                    temp
+                };
+                self.push_call(current[2 * node], current[2 * node + 1], out, ctx)?;
+                next.push(out);
+            }
+            current = next;
         }
-        for node in 0..4 {
-            self.push_call(temps[2 * node], temps[2 * node + 1], temps[8 + node], ctx)?;
-        }
-        for node in 0..2 {
-            self.push_call(temps[8 + 2 * node], temps[8 + 2 * node + 1], temps[12 + node], ctx)?;
-        }
-        self.push_call(temps[12], temps[13], dest, ctx)
+        Ok(current[0])
     }
 
     fn run<M: MemoryAccess>(&mut self, ctx: &mut InstructionContext<'_, M>) -> Result<(), RunnerError> {
-        for row in 0..PQ_DAS_COMMITMENT_N {
-            let row_base = self.codeword_base + row * PQ_DAS_COMMITMENT_ROW_STRIDE;
-            for cell in 0..PQ_DAS_COMMITMENT_N_CELLS {
-                let input = row_base + cell * PQ_DAS_COMMITMENT_CELL_BASE_LEN;
+        for row in 0..self.profile.rows {
+            let row_base = self.codeword_base + row * self.profile.row_stride;
+            for cell in 0..self.profile.n_cells {
+                let input = row_base + cell * self.profile.cell_base_len;
                 let dest = self.cell_digest(cell, row);
                 self.hash_cell(row, cell, input, dest, ctx)?;
             }
-            let row_state0 = self.row_temp(row, 0);
-            self.push_call(self.cell_digest(0, row), self.cell_digest(1, row), row_state0, ctx)?;
-            for cell in 2..(PQ_DAS_COMMITMENT_SYSTEMATIC_CELLS - 1) {
+            if self.profile.systematic_cells == 2 {
                 self.push_call(
-                    self.row_temp(row, cell - 2),
-                    self.cell_digest(cell, row),
-                    self.row_temp(row, cell - 1),
+                    self.cell_digest(0, row),
+                    self.cell_digest(1, row),
+                    self.row_hash(row),
+                    ctx,
+                )?;
+            } else {
+                let row_state0 = self.row_temp(row, 0);
+                self.push_call(self.cell_digest(0, row), self.cell_digest(1, row), row_state0, ctx)?;
+                for cell in 2..(self.profile.systematic_cells - 1) {
+                    self.push_call(
+                        self.row_temp(row, cell - 2),
+                        self.cell_digest(cell, row),
+                        self.row_temp(row, cell - 1),
+                        ctx,
+                    )?;
+                }
+                self.push_call(
+                    self.row_temp(row, self.profile.systematic_cells - 3),
+                    self.cell_digest(self.profile.systematic_cells - 1, row),
+                    self.row_hash(row),
                     ctx,
                 )?;
             }
-            self.push_call(
-                self.row_temp(row, PQ_DAS_COMMITMENT_SYSTEMATIC_CELLS - 3),
-                self.cell_digest(PQ_DAS_COMMITMENT_SYSTEMATIC_CELLS - 1, row),
-                self.row_hash(row),
-                ctx,
-            )?;
         }
-        for row in PQ_DAS_COMMITMENT_N..PQ_DAS_COMMITMENT_N_PADDED {
+        for row in self.profile.rows..self.profile.rows_padded {
             for k in 0..DIGEST_LEN {
                 ctx.memory.set(self.row_hash(row) + k, F::ZERO)?;
             }
         }
 
-        let row_leaves: [usize; 16] = std::array::from_fn(|i| self.row_hash(i));
-        let row_temps: [usize; 15] = std::array::from_fn(|i| self.row_root_temp(i));
-        let root_row = self.row_root_temp(14);
-        self.merkle16(&row_leaves, root_row, &row_temps, ctx)?;
+        let row_leaves = (0..self.profile.rows_padded).map(|i| self.row_hash(i)).collect();
+        let root_row = self.merkle_power_of_two(
+            row_leaves,
+            self.row_root_temp(0),
+            self.row_root_temp(self.profile.rows_padded - 2),
+            ctx,
+        )?;
 
-        for cell in 0..PQ_DAS_COMMITMENT_N_CELLS {
-            let leaves: [usize; 16] = std::array::from_fn(|row| {
-                if row < PQ_DAS_COMMITMENT_N {
-                    self.cell_digest(cell, row)
-                } else {
-                    self.zero_digest()
-                }
-            });
-            let column_temps: [usize; 15] = std::array::from_fn(|i| self.column_temp(cell, i));
-            self.merkle16(&leaves, self.column_root(cell), &column_temps, ctx)?;
+        for cell in 0..self.profile.n_cells {
+            let leaves = (0..self.profile.rows_padded)
+                .map(|row| {
+                    if row < self.profile.rows {
+                        self.cell_digest(cell, row)
+                    } else {
+                        self.zero_digest()
+                    }
+                })
+                .collect();
+            self.merkle_power_of_two(leaves, self.column_temp(cell, 0), self.column_root(cell), ctx)?;
         }
 
-        let mut current_start = PQ_DAS_COMMITMENT_COLUMN_ROOTS_OFFSET;
-        let mut current_count = PQ_DAS_COMMITMENT_N_CELLS;
-        let mut out_cursor = 0usize;
-        while current_count > 1 {
-            let next_count = current_count / 2;
-            for node in 0..next_count {
-                let left = self.s(current_start + (2 * node) * DIGEST_LEN);
-                let right = self.s(current_start + (2 * node + 1) * DIGEST_LEN);
-                let out = self.outer_temp(out_cursor + node);
-                self.push_call(left, right, out, ctx)?;
-            }
-            current_start = PQ_DAS_COMMITMENT_OUTER_TEMPS_OFFSET + out_cursor * DIGEST_LEN;
-            out_cursor += next_count;
-            current_count = next_count;
-        }
-        let root_col = self.outer_temp(out_cursor - 1);
+        let column_leaves = (0..self.profile.n_cells).map(|cell| self.column_root(cell)).collect();
+        let root_col = self.merkle_power_of_two(
+            column_leaves,
+            self.outer_temp(0),
+            self.outer_temp(self.profile.n_cells - 2),
+            ctx,
+        )?;
         self.push_call(root_row, root_col, self.public_root_ptr, ctx)
     }
 }

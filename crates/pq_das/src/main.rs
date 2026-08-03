@@ -545,7 +545,11 @@ impl Cli {
     fn selected_v4_precompile_profile(&self) -> Result<v4_precompile::ExtProfile, Box<dyn std::error::Error>> {
         match self.profile {
             ProfileName::BlobExt2x15 => Ok(v4_precompile::ExtProfile::BLOB_EXT_2X_15),
-            _ => Err("v4_precompile currently supports --profile blob-ext-2x-15".into()),
+            ProfileName::BlobExt2xC128_14 => Ok(v4_precompile::ExtProfile::BLOB_EXT_2X_C128_14),
+            ProfileName::BlobExt2x30 => Ok(v4_precompile::ExtProfile::BLOB_EXT_2X_30),
+            ProfileName::BlobExt4xC128_14 => Ok(v4_precompile::ExtProfile::BLOB_EXT_4X_C128_14),
+            ProfileName::BlobExt4x14 => Ok(v4_precompile::ExtProfile::BLOB_EXT_4X_14),
+            _ => Err("v4_precompile supports --profile blob-ext-2x-15, blob-ext-2x-c128-14, blob-ext-2x-30, blob-ext-4x-c128-14, or blob-ext-4x-14".into()),
         }
     }
 
@@ -781,7 +785,13 @@ fn run_v4_precompile_single(
 }
 
 fn run_all_v4_precompile_benchmarks(skip_reconstruction: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let profiles = [v4_precompile::ExtProfile::BLOB_EXT_2X_15];
+    let profiles = [
+        v4_precompile::ExtProfile::BLOB_EXT_2X_15,
+        v4_precompile::ExtProfile::BLOB_EXT_2X_C128_14,
+        v4_precompile::ExtProfile::BLOB_EXT_2X_30,
+        v4_precompile::ExtProfile::BLOB_EXT_4X_C128_14,
+        v4_precompile::ExtProfile::BLOB_EXT_4X_14,
+    ];
     let mut results = Vec::new();
     for profile in profiles {
         results.push(run_v4_precompile_benchmark(profile, skip_reconstruction)?);

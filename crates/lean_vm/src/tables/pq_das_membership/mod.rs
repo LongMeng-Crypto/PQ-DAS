@@ -8,10 +8,11 @@ use air::*;
 pub const PQ_DAS_MEMBERSHIP_BATCH_NAME: &str = "pq_das_membership_batch";
 pub const PQ_DAS_MEMBERSHIP_DOMAINSEP: usize = 6;
 
-/// Fixed V4-precompile baseline: blob-ext-2x-15, m=32768 extension symbols.
-pub const PQ_DAS_MEMBERSHIP_BASELINE_ROWS: usize = 15;
-pub const PQ_DAS_MEMBERSHIP_BASELINE_ROW_LEN: usize = 32_768;
-pub const PQ_DAS_MEMBERSHIP_CODEWORD_ROW_STRIDE: usize = PQ_DAS_MEMBERSHIP_BASELINE_ROW_LEN * DIMENSION;
+const SUPPORTED_MEMBERSHIP_PROFILES: &[(usize, usize)] = &[(15, 32_768), (14, 32_768), (30, 32_768), (14, 65_536)];
+
+fn supported_membership_profile(rows: usize, row_len: usize) -> bool {
+    SUPPORTED_MEMBERSHIP_PROFILES.contains(&(rows, row_len))
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PqDasMembershipBatchPrecompile<const BUS: bool>;
@@ -31,7 +32,6 @@ impl<const BUS: bool> TableT for PqDasMembershipBatchPrecompile<BUS> {
 
     fn bus_interactions(&self) -> Vec<BusInteraction> {
         let mut buses = vec![
-            // One row pulls the macro precompile call from the execution table.
             BusInteraction {
                 direction: BusDirection::Pull,
                 multiplicity: BusMultiplicity::Column(COL_PQ_MEM_EXEC_MULTIPLICITY),
@@ -42,11 +42,10 @@ impl<const BUS: bool> TableT for PqDasMembershipBatchPrecompile<BUS> {
                     BusData::Column(COL_PQ_MEM_RESULT_BASE),
                 ],
             },
-            // Every active row pushes one ordinary dot_product_ee call into ExtensionOp.
             BusInteraction {
                 direction: BusDirection::Push,
                 multiplicity: BusMultiplicity::Column(COL_PQ_MEM_ACTIVE),
-                domainsep: BusData::Constant(extension_dot_product_domainsep(PQ_DAS_MEMBERSHIP_BASELINE_ROW_LEN)),
+                domainsep: BusData::Column(COL_PQ_MEM_DOT_DOMAINSEP),
                 data: vec![
                     BusData::Column(COL_PQ_MEM_IDX_A),
                     BusData::Column(COL_PQ_MEM_CHECK_VECTOR_PTR),
@@ -54,7 +53,6 @@ impl<const BUS: bool> TableT for PqDasMembershipBatchPrecompile<BUS> {
                 ],
             },
         ];
-        // The macro table also checks that every extension dot product output is zero.
         buses.extend(memory_lookups_consecutive(
             COL_PQ_MEM_IDX_RES,
             COL_PQ_MEM_ZERO_RESULT_START,
@@ -83,7 +81,7 @@ impl<const BUS: bool> TableT for PqDasMembershipBatchPrecompile<BUS> {
         let PrecompileCompTimeArgs::PqDasMembershipBatch { rows, row_len } = args else {
             unreachable!("PqDasMembershipBatch table called with non-PQ-DAS args");
         };
-        if rows != PQ_DAS_MEMBERSHIP_BASELINE_ROWS || row_len != PQ_DAS_MEMBERSHIP_BASELINE_ROW_LEN {
+        if !supported_membership_profile(rows, row_len) {
             return Err(RunnerError::InvalidExtensionOp);
         }
 
@@ -91,8 +89,10 @@ impl<const BUS: bool> TableT for PqDasMembershipBatchPrecompile<BUS> {
             op: ExtensionOp::DotProduct,
             flag_be: false,
         };
+        let row_stride = row_len * DIMENSION;
+        let dot_domainsep = F::from_usize(extension_dot_product_domainsep(row_len));
         for row in 0..rows {
-            let idx_a = codeword_base + F::from_usize(row * row_len * DIMENSION);
+            let idx_a = codeword_base + F::from_usize(row * row_stride);
             let idx_b = check_vector_ptr;
             let idx_res = result_base + F::from_usize(row * DIMENSION);
             Table::extension_op().execute(
@@ -117,6 +117,8 @@ impl<const BUS: bool> TableT for PqDasMembershipBatchPrecompile<BUS> {
             trace.columns[COL_PQ_MEM_CODEWORD_BASE].push(codeword_base);
             trace.columns[COL_PQ_MEM_CHECK_VECTOR_PTR].push(check_vector_ptr);
             trace.columns[COL_PQ_MEM_RESULT_BASE].push(result_base);
+            trace.columns[COL_PQ_MEM_ROW_STRIDE].push(F::from_usize(row_stride));
+            trace.columns[COL_PQ_MEM_DOT_DOMAINSEP].push(dot_domainsep);
             trace.columns[COL_PQ_MEM_IDX_A].push(idx_a);
             trace.columns[COL_PQ_MEM_IDX_RES].push(idx_res);
             for k in 0..DIMENSION {
