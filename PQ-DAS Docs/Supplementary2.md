@@ -97,7 +97,7 @@ These tables report the latest V3-ext server sweep results measured with the sam
 ### Table 7. LeanVM Precompile Benchmarks
 
 | Profile | $n$ | Payload | Commitment size | Proof size | Sample size | Encode + commit | Prover preprocess | LeanVM prove | Verifier rebuild | LeanVM verify | Verify openings | Reconstruct | VM cycles | Poseidon16 calls | ExtensionOp calls | LeanVM proving throughput | Full DAS throughput | Result |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | `blob-ext-2x-15` | 15 | 4650 KiB | 0.50 KB | 400.56 KB | 180.98 KB | 0.043s | 0.066s | 3.393s | 0.065s | 0.053s | 0.002s | 0.058s | 6 | 315904 | 491520 | 1370.57 KiB/s | 868.19 KiB/s | accepted |
 | `blob-ext-2x-c128-14` | 14 | 4340 KiB | 0.47 KB | 400.07 KB | 386.32 KB | 0.030s | 0.065s | 3.214s | 0.065s | 0.053s | 0.005s | 0.054s | 6 | 289025 | 458752 | 1350.36 KiB/s | 851.90 KiB/s | accepted |
 | `blob-ext-2x-30` | 30 | 9300 KiB | 0.97 KB | 420.91 KB | 359.20 KB | 0.063s | 0.066s | 6.438s | 0.064s | 0.056s | 0.003s | 0.074s | 6 | 631809 | 983040 | 1444.50 KiB/s | 926.82 KiB/s | accepted |
