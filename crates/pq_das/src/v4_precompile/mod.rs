@@ -549,7 +549,31 @@ impl Display for ExtProfile {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExtCommitment {
     pub profile: ExtProfile,
+    pub row_hashes: Vec<Digest>,
+    pub root_col: Digest,
+    /// Cached final root derived from the public row hashes and column root.
     pub root: Digest,
+}
+
+impl ExtCommitment {
+    fn recompute_row_root(&self) -> Option<Digest> {
+        if self.row_hashes.len() != self.profile.n {
+            return None;
+        }
+        let zero = [F::ZERO; DIGEST_LEN];
+        let mut row_leaves = vec![zero; padded_rows(self.profile)];
+        row_leaves[..self.profile.n].copy_from_slice(&self.row_hashes);
+        Some(merkle_root_no_layers(&row_leaves))
+    }
+
+    fn recompute_root(&self) -> Option<Digest> {
+        Some(poseidon16_compress_pair(&self.recompute_row_root()?, &self.root_col))
+    }
+
+    fn normalize(mut self) -> Result<Self, DemoError> {
+        self.root = self.recompute_root().ok_or(DemoError::InvalidDataShape)?;
+        Ok(self)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -563,7 +587,6 @@ pub struct ExtPreparedStatement {
 pub struct ExtAuxiliaryData {
     pub profile: ExtProfile,
     pub codewords: ExtCodewords,
-    pub row_root: Digest,
     pub column_roots: Vec<Digest>,
     pub outer_merkle_layers: Vec<Vec<Digest>>,
 }
@@ -576,7 +599,6 @@ pub struct ExtCellOpening {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExtTranscript {
-    pub row_root: Digest,
     pub openings: Vec<ExtCellOpening>,
     pub outer_multiproof: Vec<Digest>,
 }
@@ -1166,6 +1188,8 @@ pub fn encode_and_commit(profile: ExtProfile, data: &ExtData) -> Result<(ExtComm
     let root_col = outer_merkle_layers.last().unwrap()[0];
     let commitment = ExtCommitment {
         profile,
+        row_hashes,
+        root_col,
         root: poseidon16_compress_pair(&row_root, &root_col),
     };
     Ok((
@@ -1173,7 +1197,6 @@ pub fn encode_and_commit(profile: ExtProfile, data: &ExtData) -> Result<(ExtComm
         ExtAuxiliaryData {
             profile,
             codewords,
-            row_root,
             column_roots,
             outer_merkle_layers,
         },
@@ -1337,6 +1360,7 @@ fn read_only_data(commitment: &ExtCommitment, check_vector: &ExtCheckVector) -> 
 
 /// Recomputes Fiat-Shamir, generates physical-order L, and compiles the V4-precompile guest.
 pub fn prepare_statement(commitment: ExtCommitment) -> Result<ExtPreparedStatement, DemoError> {
+    let commitment = commitment.normalize()?;
     let check_vector = check_vector(&commitment).ok_or(DemoError::ChallengeOnDomain)?;
     let bytecode = compile_program_with_flags(&guest_source(), compilation_flags(&commitment)?)
         .with_read_only_data(read_only_data(&commitment, &check_vector));
@@ -1411,7 +1435,6 @@ pub fn query(aux: &ExtAuxiliaryData, indices: &[usize]) -> Result<ExtTranscript,
     });
     let outer_multiproof = outer_merkle_multiproof(&aux.outer_merkle_layers, indices);
     Ok(ExtTranscript {
-        row_root: aux.row_root,
         openings,
         outer_multiproof,
     })
@@ -1445,7 +1468,7 @@ pub fn verify_openings(commitment: &ExtCommitment, transcript: &ExtTranscript) -
     else {
         return false;
     };
-    poseidon16_compress_pair(&transcript.row_root, &root_col) == commitment.root
+    root_col == commitment.root_col && commitment.recompute_root().is_some_and(|root| root == commitment.root)
 }
 
 /// Reconstructs extension-field blobs after verifying enough distinct V4-precompile cell columns.
@@ -1484,20 +1507,19 @@ pub fn reconstruct(commitment: &ExtCommitment, transcripts: &[ExtTranscript]) ->
     .collect()
 }
 
-/// Returns canonical bytes for row root, queried indices, serialized cells, and shared outer multiproof.
+/// Returns canonical bytes for queried indices, serialized cells, and shared outer multiproof.
 pub fn transcript_size_bytes(transcript: &ExtTranscript) -> usize {
-    DIGEST_LEN * size_of::<u32>()
-        + transcript
-            .openings
-            .iter()
-            .map(|opening| size_of::<u32>() + opening.cells.iter().map(Vec::len).sum::<usize>() * size_of::<u32>())
-            .sum::<usize>()
+    transcript
+        .openings
+        .iter()
+        .map(|opening| size_of::<u32>() + opening.cells.iter().map(Vec::len).sum::<usize>() * size_of::<u32>())
+        .sum::<usize>()
         + transcript.outer_multiproof.len() * DIGEST_LEN * size_of::<u32>()
 }
 
-/// Returns the public commitment size in canonical KoalaBear bytes.
-pub fn commitment_size_bytes(_commitment: &ExtCommitment) -> usize {
-    DIGEST_LEN * size_of::<u32>()
+/// Returns the public commitment size: all row hashes plus the column root.
+pub fn commitment_size_bytes(commitment: &ExtCommitment) -> usize {
+    (commitment.row_hashes.len() * DIGEST_LEN + DIGEST_LEN) * size_of::<u32>()
 }
 
 /// Deterministically generates extension-field input blobs for benchmarking.
