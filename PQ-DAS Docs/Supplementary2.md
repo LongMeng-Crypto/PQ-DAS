@@ -94,18 +94,15 @@ These tables report the latest V3-ext server sweep results measured with the sam
 | `blob-ext-4x-c32-14` | 14 | 8680 KiB | 0.47 KB | 464.75 KB | 258.86 KB | 0.066s | 0.221s | 7.509s | 0.219s | 0.056s | 0.003s | 0.123s | 2746486 | 591873 | 917504 | 1155.96 KiB/s | 774.67 KiB/s | accepted |
 | `blob-ext-4x-c32-16` | 16 | 9920 KiB | 0.53 KB | 428.29 KB | 295.14 KB | 0.073s | 0.220s | 9.604s | 0.221s | 0.059s | 0.003s | 0.128s | 3123300 | 671743 | 1048576 | 1032.88 KiB/s | 722.79 KiB/s | accepted |
 
-### Table 7. V4-Precompile Benchmark Profiles (Server)
+### Table 7. LeanVM Precompile Benchmarks (Server)
 
-- These profiles use the V4-precompile implementation, where PQ-DAS commitment and membership are issued as LeanVM macro-precompile calls that relay to the existing Poseidon16 and ExtensionOp tables.
-- Measurements below were run on the same server described above.
-
-| Profile | WHIR log inv rate | Bytecode instructions | Read-only elements | Opened cells | $\log_2\nu_{\rm rep}$ | Commitment size | Proof size | Sample size | Encode + commit | Prover preprocess | LeanVM prove | Verifier rebuild | LeanVM verify | Verify openings | Reconstruct | VM cycles | Poseidon16 calls | ExtensionOp calls | LeanVM proving throughput | Full DAS throughput | Result |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `blob-ext-2x-15` | 1 | 1024 | 163848 | 19 | -83.398 | 0.50 KB | 400.56 KB | 180.98 KB | 0.043s | 0.066s | 3.393s | 0.065s | 0.053s | 0.002s | 0.058s | 6 | 315904 | 491520 | 1370.57 KiB/s | 868.19 KiB/s | accepted |
-| `blob-ext-2x-c128-14` | 1 | 1024 | 163848 | 11 | -57.495 | 0.47 KB | 400.07 KB | 386.32 KB | 0.030s | 0.065s | 3.214s | 0.065s | 0.053s | 0.005s | 0.054s | 6 | 289025 | 458752 | 1350.36 KiB/s | 851.90 KiB/s | accepted |
-| `blob-ext-2x-30` | 1 | 1024 | 163848 | 19 | -83.398 | 0.97 KB | 420.91 KB | 359.20 KB | 0.063s | 0.066s | 6.438s | 0.064s | 0.056s | 0.003s | 0.074s | 6 | 631809 | 983040 | 1444.50 KiB/s | 926.82 KiB/s | accepted |
-| `blob-ext-4x-c128-14` | 1 | 1024 | 327688 | 14 | -97.448 | 0.47 KB | 421.18 KB | 491.99 KB | 0.060s | 0.114s | 6.238s | 0.115s | 0.056s | 0.005s | 0.117s | 6 | 578049 | 917504 | 1391.57 KiB/s | 890.96 KiB/s | accepted |
-| `blob-ext-4x-14` | 1 | 1024 | 327688 | 19 | -83.398 | 0.47 KB | 420.08 KB | 335.61 KB | 0.062s | 0.114s | 6.224s | 0.115s | 0.056s | 0.003s | 0.119s | 6 | 582657 | 917504 | 1394.65 KiB/s | 894.65 KiB/s | accepted |
+| Profile | Payload | Commitment size | Proof size | Sample size | Encode + commit | Prover preprocess | LeanVM prove | Verifier rebuild | LeanVM verify | Verify openings | Reconstruct | VM cycles | Poseidon16 calls | ExtensionOp calls | LeanVM proving throughput | Full DAS throughput | Result |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `blob-ext-2x-15` | 4650 KiB | 0.50 KB | 400.56 KB | 180.98 KB | 0.043s | 0.066s | 3.393s | 0.065s | 0.053s | 0.002s | 0.058s | 6 | 315904 | 491520 | 1370.57 KiB/s | 868.19 KiB/s | accepted |
+| `blob-ext-2x-c128-14` | 4340 KiB | 0.47 KB | 400.07 KB | 386.32 KB | 0.030s | 0.065s | 3.214s | 0.065s | 0.053s | 0.005s | 0.054s | 6 | 289025 | 458752 | 1350.36 KiB/s | 851.90 KiB/s | accepted |
+| `blob-ext-2x-30` | 9300 KiB | 0.97 KB | 420.91 KB | 359.20 KB | 0.063s | 0.066s | 6.438s | 0.064s | 0.056s | 0.003s | 0.074s | 6 | 631809 | 983040 | 1444.50 KiB/s | 926.82 KiB/s | accepted |
+| `blob-ext-4x-c128-14` | 8680 KiB | 0.47 KB | 421.18 KB | 491.99 KB | 0.060s | 0.114s | 6.238s | 0.115s | 0.056s | 0.005s | 0.117s | 6 | 578049 | 917504 | 1391.57 KiB/s | 890.96 KiB/s | accepted |
+| `blob-ext-4x-14` | 8680 KiB | 0.47 KB | 420.08 KB | 335.61 KB | 0.062s | 0.114s | 6.224s | 0.115s | 0.056s | 0.003s | 0.119s | 6 | 582657 | 917504 | 1394.65 KiB/s | 894.65 KiB/s | accepted |
 
 ## Summary
 
@@ -114,4 +111,4 @@ These tables report the latest V3-ext server sweep results measured with the sam
 - Best 2x row-count point is `blob-ext-2x-30`, with 1235.45 KiB/s LeanVM proving throughput and 827.63 KiB/s Full DAS throughput.
 - WHIR log inverse rate 2 reduces proof size but is slower overall: for 2x, Full DAS throughput drops from 742.74 to 667.73 KiB/s; for 4x, it drops from 785.34 to 692.17 KiB/s.
 - Larger cells help proving throughput in this server run. At 4x and $n=14$, increasing $c$ from 64 to 128 improves Full DAS throughput from 794.57 to 850.63 KiB/s, despite the larger sample size.
-- The V4-precompile results in Table 7 are the strongest server measurements: `blob-ext-2x-30` reaches 1444.50 KiB/s LeanVM proving throughput and 926.82 KiB/s Full DAS throughput, while `blob-ext-4x-14` is close behind at 1394.65 KiB/s and 894.65 KiB/s.
+- The LeanVM precompile results in Table 7 are the strongest server measurements: `blob-ext-2x-30` reaches 1444.50 KiB/s LeanVM proving throughput and 926.82 KiB/s Full DAS throughput, while `blob-ext-4x-14` is close behind at 1394.65 KiB/s and 894.65 KiB/s.

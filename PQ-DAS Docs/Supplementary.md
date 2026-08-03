@@ -17,7 +17,7 @@ All benchmark profiles covered by this table use the KoalaBear quintic extension
 | 4x cell-size sweep | Blob size $=4x$, $n=14$, $k=32768$, $m=65536$, WHIR log inverse rate $=1$ | $c\in\{16,32,64,128\}$, hence $\ell=m/c$, $t=k/c$, and opened cells | `b4-c16-r14-w1`, `b4-c32-r14-w1`, `b4-c64-r14-w1`, `b4-c128-r14-w1` | [Table 4](#table-4-cell-size-sweep-at-4x-blob-size) |
 | 4x row-count sweep | Blob size $=4x$, $c=32$, $k=32768$, $m=65536$, $\ell=2048$, $t=1024$, opened cells $=29$, WHIR log inverse rate $=1$ | $n\in\{1,2,4,6,8,10,12,14,16\}$ | `b4-c32-rN-w1` | [Table 5](#table-5-row-count-sweep-at-4x-blob-size) |
 | WHIR-rate sweep | Candidate profiles `b2-c32-r14` and `b4-c64-r14` | WHIR log inverse rate $r\in\{1,2\}$ | `b2-c32-r14-w1/w2`, `b4-c64-r14-w1/w2` | [Table 6](#table-6-whir-rate-sweep) |
-| V4-precompile sweep | LeanVM with PQ-DAS macro-precompile relay tables | Selected high-throughput profiles | `blob-ext-2x-15`, `blob-ext-2x-c128-14`, `blob-ext-2x-30`, `blob-ext-4x-c128-14`, `blob-ext-4x-14` | [Table 7](#table-7-v4-precompile-benchmark-profiles-local-pc) |
+| LeanVM precompile sweep | LeanVM with PQ-DAS macro-precompile relay tables | Selected high-throughput profiles | `blob-ext-2x-15`, `blob-ext-2x-c128-14`, `blob-ext-2x-30`, `blob-ext-4x-c128-14`, `blob-ext-4x-14` | [Table 7](#table-7-leanvm-precompile-benchmarks-local-pc) |
 
 ### Table 1. Blob-Size Sweep
 
@@ -111,18 +111,15 @@ All benchmark profiles covered by this table use the KoalaBear quintic extension
 - WHIR log inverse rate $r$ means the WHIR proof-system RS rate is $2^{-r}$, so $r=1$ is rate $1/2$ and $r=2$ is rate $1/4$.
 - Rates $r=3,4$ correspond to WHIR rates $1/8$ and $1/16$, but the target extension-field profiles panic in WHIR config construction with `Increase folding_factor_0` under LeanVM's default `WHIR_INITIAL_FOLDING_FACTOR=7`. Supporting them would require changing the global WHIR initial folding factor and synchronizing verifier/recursion configuration, so they are not included as a one-variable benchmark sweep.
 
-### Table 7. V4-Precompile Benchmark Profiles (Local PC)
+### Table 7. LeanVM Precompile Benchmarks (Local PC)
 
-- These profiles use the V4-precompile implementation, where PQ-DAS commitment and membership are issued as LeanVM macro-precompile calls that relay to the existing Poseidon16 and ExtensionOp tables.
-- Measurements below are local-PC measurements with the same benchmark metrics as the non-precompile sweeps.
-
-| Profile | WHIR log inv rate | Bytecode instructions | Read-only elements | Opened cells | $\log_2\nu_{\rm rep}$ | Commitment size | Proof size | Sample size | Encode + commit | Prover preprocess | LeanVM prove | Verifier rebuild | LeanVM verify | Verify openings | Reconstruct | VM cycles | Poseidon16 calls | ExtensionOp calls | LeanVM proving throughput | Full DAS throughput | Result |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `blob-ext-2x-15` | 1 | 1024 | 163848 | 19 | -83.398 | 0.50 KB | 399.74 KB | 180.98 KB | 0.039s | 0.046s | 4.246s | 0.044s | 0.041s | 0.002s | 0.043s | 6 | 315904 | 491520 | 1095.14 KiB/s | 755.95 KiB/s | accepted |
-| `blob-ext-2x-c128-14` | 1 | 1024 | 163848 | 11 | -57.495 | 0.47 KB | 400.07 KB | 386.32 KB | 0.034s | 0.043s | 3.910s | 0.052s | 0.039s | 0.004s | 0.043s | 6 | 289025 | 458752 | 1109.84 KiB/s | 755.38 KiB/s | accepted |
-| `blob-ext-2x-30` | 1 | 1024 | 163848 | 19 | -83.398 | 0.97 KB | 420.91 KB | 359.20 KB | 0.067s | 0.044s | 8.919s | 0.048s | 0.041s | 0.003s | 0.066s | 6 | 631809 | 983040 | 1042.72 KiB/s | 746.06 KiB/s | accepted |
-| `blob-ext-4x-c128-14` | 1 | 1024 | 327688 | 14 | -97.448 | 0.47 KB | 421.18 KB | 491.99 KB | 0.068s | 0.081s | 9.141s | 0.084s | 0.040s | 0.004s | 0.099s | 6 | 578049 | 917504 | 949.52 KiB/s | 690.30 KiB/s | accepted |
-| `blob-ext-4x-14` | 1 | 1024 | 327688 | 19 | -83.398 | 0.47 KB | 420.08 KB | 335.61 KB | 0.073s | 0.086s | 9.215s | 0.089s | 0.045s | 0.003s | 0.103s | 6 | 582657 | 917504 | 941.92 KiB/s | 686.69 KiB/s | accepted |
+| Profile | Payload | Proof size | Sample size | Encode + commit | Prover preprocess | LeanVM prove | Verifier rebuild | LeanVM verify | Verify openings | Reconstruct | VM cycles | Poseidon16 calls | ExtensionOp calls | LeanVM proving throughput | Full DAS throughput | Result |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `blob-ext-2x-15` | 4650 KiB | 399.74 KB | 180.98 KB | 0.039s | 0.046s | 4.246s | 0.044s | 0.041s | 0.002s | 0.043s | 6 | 315904 | 491520 | 1095.14 KiB/s | 755.95 KiB/s | accepted |
+| `blob-ext-2x-c128-14` | 4340 KiB | 400.07 KB | 386.32 KB | 0.034s | 0.043s | 3.910s | 0.052s | 0.039s | 0.004s | 0.043s | 6 | 289025 | 458752 | 1109.84 KiB/s | 755.38 KiB/s | accepted |
+| `blob-ext-2x-30` | 9300 KiB | 420.91 KB | 359.20 KB | 0.067s | 0.044s | 8.919s | 0.048s | 0.041s | 0.003s | 0.066s | 6 | 631809 | 983040 | 1042.72 KiB/s | 746.06 KiB/s | accepted |
+| `blob-ext-4x-c128-14` | 8680 KiB | 421.18 KB | 491.99 KB | 0.068s | 0.081s | 9.141s | 0.084s | 0.040s | 0.004s | 0.099s | 6 | 578049 | 917504 | 949.52 KiB/s | 690.30 KiB/s | accepted |
+| `blob-ext-4x-14` | 8680 KiB | 420.08 KB | 335.61 KB | 0.073s | 0.086s | 9.215s | 0.089s | 0.045s | 0.003s | 0.103s | 6 | 582657 | 917504 | 941.92 KiB/s | 686.69 KiB/s | accepted |
 
 ## RS Membership Check Instantiations
 
