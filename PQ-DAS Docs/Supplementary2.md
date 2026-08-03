@@ -94,15 +94,15 @@ These tables report the latest V3-ext server sweep results measured with the sam
 | `blob-ext-4x-c32-14` | 14 | 8680 KiB | 0.47 KB | 464.75 KB | 258.86 KB | 0.066s | 0.221s | 7.509s | 0.219s | 0.056s | 0.003s | 0.123s | 2746486 | 591873 | 917504 | 1155.96 KiB/s | 774.67 KiB/s | accepted |
 | `blob-ext-4x-c32-16` | 16 | 9920 KiB | 0.53 KB | 428.29 KB | 295.14 KB | 0.073s | 0.220s | 9.604s | 0.221s | 0.059s | 0.003s | 0.128s | 3123300 | 671743 | 1048576 | 1032.88 KiB/s | 722.79 KiB/s | accepted |
 
-### Table 7. LeanVM Precompile Benchmarks (Server)
+### Table 7. LeanVM Precompile Benchmarks
 
-| Profile | Payload | Commitment size | Proof size | Sample size | Encode + commit | Prover preprocess | LeanVM prove | Verifier rebuild | LeanVM verify | Verify openings | Reconstruct | VM cycles | Poseidon16 calls | ExtensionOp calls | LeanVM proving throughput | Full DAS throughput | Result |
+| Profile | $n$ | Payload | Commitment size | Proof size | Sample size | Encode + commit | Prover preprocess | LeanVM prove | Verifier rebuild | LeanVM verify | Verify openings | Reconstruct | VM cycles | Poseidon16 calls | ExtensionOp calls | LeanVM proving throughput | Full DAS throughput | Result |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `blob-ext-2x-15` | 4650 KiB | 0.50 KB | 400.56 KB | 180.98 KB | 0.043s | 0.066s | 3.393s | 0.065s | 0.053s | 0.002s | 0.058s | 6 | 315904 | 491520 | 1370.57 KiB/s | 868.19 KiB/s | accepted |
-| `blob-ext-2x-c128-14` | 4340 KiB | 0.47 KB | 400.07 KB | 386.32 KB | 0.030s | 0.065s | 3.214s | 0.065s | 0.053s | 0.005s | 0.054s | 6 | 289025 | 458752 | 1350.36 KiB/s | 851.90 KiB/s | accepted |
-| `blob-ext-2x-30` | 9300 KiB | 0.97 KB | 420.91 KB | 359.20 KB | 0.063s | 0.066s | 6.438s | 0.064s | 0.056s | 0.003s | 0.074s | 6 | 631809 | 983040 | 1444.50 KiB/s | 926.82 KiB/s | accepted |
-| `blob-ext-4x-c128-14` | 8680 KiB | 0.47 KB | 421.18 KB | 491.99 KB | 0.060s | 0.114s | 6.238s | 0.115s | 0.056s | 0.005s | 0.117s | 6 | 578049 | 917504 | 1391.57 KiB/s | 890.96 KiB/s | accepted |
-| `blob-ext-4x-14` | 8680 KiB | 0.47 KB | 420.08 KB | 335.61 KB | 0.062s | 0.114s | 6.224s | 0.115s | 0.056s | 0.003s | 0.119s | 6 | 582657 | 917504 | 1394.65 KiB/s | 894.65 KiB/s | accepted |
+| `blob-ext-2x-15` | 15 | 4650 KiB | 0.50 KB | 400.56 KB | 180.98 KB | 0.043s | 0.066s | 3.393s | 0.065s | 0.053s | 0.002s | 0.058s | 6 | 315904 | 491520 | 1370.57 KiB/s | 868.19 KiB/s | accepted |
+| `blob-ext-2x-c128-14` | 14 | 4340 KiB | 0.47 KB | 400.07 KB | 386.32 KB | 0.030s | 0.065s | 3.214s | 0.065s | 0.053s | 0.005s | 0.054s | 6 | 289025 | 458752 | 1350.36 KiB/s | 851.90 KiB/s | accepted |
+| `blob-ext-2x-30` | 30 | 9300 KiB | 0.97 KB | 420.91 KB | 359.20 KB | 0.063s | 0.066s | 6.438s | 0.064s | 0.056s | 0.003s | 0.074s | 6 | 631809 | 983040 | 1444.50 KiB/s | 926.82 KiB/s | accepted |
+| `blob-ext-4x-c128-14` | 14 | 8680 KiB | 0.47 KB | 421.18 KB | 491.99 KB | 0.060s | 0.114s | 6.238s | 0.115s | 0.056s | 0.005s | 0.117s | 6 | 578049 | 917504 | 1391.57 KiB/s | 890.96 KiB/s | accepted |
+| `blob-ext-4x-14` | 14 | 8680 KiB | 0.47 KB | 420.08 KB | 335.61 KB | 0.062s | 0.114s | 6.224s | 0.115s | 0.056s | 0.003s | 0.119s | 6 | 582657 | 917504 | 1394.65 KiB/s | 894.65 KiB/s | accepted |
 
 ## Summary
 
