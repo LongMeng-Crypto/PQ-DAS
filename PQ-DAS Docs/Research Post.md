@@ -1,7 +1,7 @@
 # PQ-DAS from LeanVM: Design and Benchmark 
-*Authors.* Long Meng, Benedikt Wagner, George Kadianakis.
+*Authors.* Long Meng, Benedikt Wagner, George Kadianakis, Francesco Risitano.
 
-*Thanks to Tom Wambsgans, Thomas Coratger, Tau Lepton, Arantxa Zapico, and others for insightful discussions*.
+*Thanks to Tom Wambsgans, Thomas Coratger, Arantxa Zapico, and others for insightful discussions*.
 
 <style>
 table th, table td { white-space: nowrap; }
@@ -13,6 +13,8 @@ table td:nth-child(1) { white-space: nowrap; }
 Ethereum uses data availability sampling (DAS) to let validators check the availability of large blob data by sampling a small number of random positions from an erasure-coded object, rather than downloading the whole payload. As Ethereum moves toward post-quantum security, the [current DAS protocol based on KZG polynomial commitments](https://eprint.iacr.org/2025/1683.pdf) needs post-quantum alternatives. 
 
 This post first shows an encode + prove type of PQ-DAS construction instantiated with Reed-Solomon code, hash commitments, and the LeanVM proof system, and then show *benchmarks* for various input parameters and output metrics. The code for the up-to-date implementation is at: [LongMeng-Crypto/PQ-DAS](https://github.com/LongMeng-Crypto/PQ-DAS/tree/V2%2FV3-Demo). A companion document containing the benchmark and security results is available in [Supplementary.md](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary.md).
+
+The scope of this post is to use the original version of LeanVM without any modifications. such that it uses the common machinery shared with the rest of the Ethereum PQ roadmap. For benchmarks that use specialized circuits for PQ-DAS, please see [LeanAIR](#leanair). 
 
 ## 2. Encode + Prove DAS: Workflow
 
@@ -206,7 +208,10 @@ The main takeaways are:
 
 For the complete measured values, including proof size, sample size, VM cycles, Poseidon16 calls, ExtensionOp calls, and reconstruction time, see the [benchmark tables](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary.md#benchmark-tables) in the supplementary material.
 
-We also ran the same benchmark profiles on a stronger server with an AMD EPYC 9V74 processor, 32 logical CPUs (16 cores with 2 threads per core), 62 GiB memory and AVX-512 support. For a representative `b4-c64-r14-w1` profile, this server improves LeanVM proving throughput from $907.38$ KiB/s to $1183.20$ KiB/s, a $30.4\%$ increase, and Full DAS throughput from $623.21$ KiB/s to $794.57$ KiB/s, a $27.5\%$ increase. The full server-side benchmark tables are available in [Supplementary2.md](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary2.md). Tau's LeanDA/LeanAIR prototype provides a useful upper-reference point: it encodes the DAS commitment layout and RS checks as a dedicated LeanAIR trace rather than proving generic LeanVM execution; in our recorded runs it reaches about $3.08$ MiB/s for one 101-row proof and about $3.41$ MiB/s with parallel batching.
+We also ran the same benchmark profiles on a stronger server with an AMD EPYC 9V74 processor, 32 logical CPUs (16 cores with 2 threads per core), 62 GiB memory and AVX-512 support. For a representative `b4-c64-r14-w1` profile, this server improves LeanVM proving throughput from $907.38$ KiB/s to $1183.20$ KiB/s, a $30.4\%$ increase, and Full DAS throughput from $623.21$ KiB/s to $794.57$ KiB/s, a $27.5\%$ increase. The full server-side benchmark tables are available in [Supplementary2.md](https://github.com/LongMeng-Crypto/PQ-DAS/blob/V2%2FV3-Demo/PQ-DAS%20Docs/Supplementary2.md). 
+
+### LeanAIR
+Francesco Risitano's [LeanDA/LeanAIR prototype](https://github.com/frisitano/leanMultisig/tree/feat/direct-leanair-construction-prover/crates/lean-da) is a useful upper-reference point for the performance side of this design space: instead of proving a generic LeanVM program, it builds a DAS-specific AIR trace where the cell hashes, row/column commitment chains, and RS checks are exposed directly to the proof system, while low-level hash and arithmetic checks are handled by dedicated tables. This removes VM instruction decoding, stack/memory bookkeeping, and generic precompile routing; the trade-off is that this dedicated-AIR route is more specialized, so it is harder to maintain and audit than a standard LeanVM execution model. Measured with the same LeanVM throughput metric used in our benchmark tables, it reaches about $3.08$ MiB/s for one 101-row proof and about $3.41$ MiB/s with parallel batching on the same PC benchmark setup.
 
 ## Summary and Future Directions
 Overall we have the following summaries from our experiments:
@@ -221,4 +226,4 @@ And we have the following directions to work on for next steps:
 
 - **Alternative erasure code**: We plan to replace the RS code with some other codes that are potentially efficient, such as [multiplicity codes](https://eprint.iacr.org/2025/1414), or [linear-time encodable code](https://eprint.iacr.org/2021/1043), and benchmark their efficiency for comparing with the current results.
 
-- **Alternative proof systems**: We also plan to instantiate the DAS SNARK/STARK layer with proof systems other than LeanVM, or LeanVM with some DAS-specific incremental modifications, and benchmark whether they give better throughput for the same DAS construction.
+- **Alternative proof systems**: We also plan to instantiate the DAS SNARK/STARK layer with proof systems other than LeanVM, or LeanVM with some incremental modifications between the original version and a fully dedicated LeanAIR implementation, and benchmark whether they give better throughput for the same DAS construction.
