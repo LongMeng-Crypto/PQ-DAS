@@ -670,6 +670,8 @@ dependencies = [
  "lean_prover",
  "lean_vm",
  "postcard",
+ "serde",
+ "serde_json",
  "sha2",
 ]
 

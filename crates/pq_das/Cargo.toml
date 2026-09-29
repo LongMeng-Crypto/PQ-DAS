@@ -13,4 +13,6 @@ lean_compiler.workspace = true
 lean_prover.workspace = true
 lean_vm.workspace = true
 postcard.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 sha2 = "0.10"

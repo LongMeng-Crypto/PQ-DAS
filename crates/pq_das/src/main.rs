@@ -191,6 +191,9 @@ impl From<V2RelationName> for v2_base::Relation {
 #[derive(Debug, Parser)]
 #[command(about = "Benchmark the parameterized PQ-DAS V2 LeanVM demos")]
 struct Cli {
+    #[command(flatten)]
+    opening_path_benchmark: pq_das::opening_path_benchmark::Options,
+
     #[arg(long, value_enum, default_value_t = VersionName::V2Base)]
     version: VersionName,
 
@@ -583,6 +586,9 @@ impl Cli {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     backend::parallel::init();
     let cli = Cli::parse();
+    if cli.opening_path_benchmark.all_opening_paths_only {
+        return pq_das::opening_path_benchmark::run(&cli.opening_path_benchmark);
+    }
     if cli.all_v2_base_benchmarks {
         run_all_v2_base_benchmarks(cli.skip_reconstruction, cli.v2_relation.into())?;
         return Ok(());
@@ -1953,4 +1959,34 @@ fn full_das_throughput_v4_ext_kib_per_sec(
 
 fn kb(bytes: usize) -> String {
     format!("{:.2}", bytes as f64 / 1024.0)
+}
+
+#[cfg(test)]
+mod opening_path_cli_tests {
+    use super::*;
+
+    #[test]
+    fn existing_benchmark_command_does_not_enable_supplement() {
+        let cli = Cli::try_parse_from(["pq_das", "--version", "v3_ext", "--profile", "blob-ext-2x-15"]).unwrap();
+        assert!(!cli.opening_path_benchmark.all_opening_paths_only);
+        assert!(matches!(cli.version, VersionName::V3Ext));
+        assert!(matches!(cli.profile, ProfileName::BlobExt2x15));
+    }
+
+    #[test]
+    fn supplement_is_explicit_and_rejects_zero_repetitions() {
+        let cli = Cli::try_parse_from(["pq_das", "--all-opening-paths-only"]).unwrap();
+        assert!(cli.opening_path_benchmark.all_opening_paths_only);
+        assert_eq!(cli.opening_path_benchmark.path_benchmark_repetitions, 100);
+        assert!(Cli::try_parse_from(["pq_das", "--path-benchmark-repetitions", "1"]).is_err());
+        assert!(
+            Cli::try_parse_from([
+                "pq_das",
+                "--all-opening-paths-only",
+                "--path-benchmark-repetitions",
+                "0"
+            ])
+            .is_err()
+        );
+    }
 }

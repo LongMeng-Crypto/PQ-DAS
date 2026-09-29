@@ -2,6 +2,7 @@ mod config;
 pub mod encoding;
 mod hashing;
 mod membership;
+pub mod opening_path_benchmark;
 pub mod v2_base;
 pub mod v2_ext;
 pub mod v3_base;
